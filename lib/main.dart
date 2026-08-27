@@ -1,4 +1,5 @@
 import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -12,28 +13,14 @@ void main() {
 // APP
 // ============================================================
 
-class CashierPro extends StatefulWidget {
+class CashierPro extends StatelessWidget {
   const CashierPro({super.key});
-
-  @override
-  State<CashierPro> createState() => _CashierProState();
-}
-
-class _CashierProState extends State<CashierPro> {
-  ThemeMode themeMode = ThemeMode.light;
-
-  void changeTheme(bool dark) {
-    setState(() {
-      themeMode = dark ? ThemeMode.dark : ThemeMode.light;
-    });
-  }
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'CASHIER PRO',
-      themeMode: themeMode,
       theme: ThemeData(
         useMaterial3: true,
         colorSchemeSeed: Colors.indigo,
@@ -44,10 +31,7 @@ class _CashierProState extends State<CashierPro> {
         colorSchemeSeed: Colors.indigo,
         brightness: Brightness.dark,
       ),
-      home: HomeScreen(
-        darkMode: themeMode == ThemeMode.dark,
-        onThemeChanged: changeTheme,
-      ),
+      home: const HomeScreen(),
     );
   }
 }
@@ -59,39 +43,31 @@ class _CashierProState extends State<CashierPro> {
 class Product {
   String id;
   String name;
-  double buyPrice;
-  double sellPrice;
+  double price;
   int quantity;
-  int lowStock;
 
   Product({
     required this.id,
     required this.name,
-    required this.buyPrice,
-    required this.sellPrice,
+    required this.price,
     required this.quantity,
-    this.lowStock = 5,
   });
 
-  double get profit => sellPrice - buyPrice;
-
-  Map<String, dynamic> toJson() => {
-        'id': id,
-        'name': name,
-        'buyPrice': buyPrice,
-        'sellPrice': sellPrice,
-        'quantity': quantity,
-        'lowStock': lowStock,
-      };
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'name': name,
+      'price': price,
+      'quantity': quantity,
+    };
+  }
 
   factory Product.fromJson(Map<String, dynamic> json) {
     return Product(
       id: json['id'].toString(),
       name: json['name']?.toString() ?? '',
-      buyPrice: (json['buyPrice'] ?? json['price'] ?? 0).toDouble(),
-      sellPrice: (json['sellPrice'] ?? json['price'] ?? 0).toDouble(),
-      quantity: (json['quantity'] ?? 0).toInt(),
-      lowStock: (json['lowStock'] ?? 5).toInt(),
+      price: (json['price'] as num?)?.toDouble() ?? 0,
+      quantity: (json['quantity'] as num?)?.toInt() ?? 0,
     );
   }
 }
@@ -105,8 +81,7 @@ class CartItem {
     required this.quantity,
   });
 
-  double get total => product.sellPrice * quantity;
-  double get profit => product.profit * quantity;
+  double get total => product.price * quantity;
 }
 
 class Sale {
@@ -115,7 +90,6 @@ class Sale {
   final double total;
   final double paid;
   final double change;
-  final double profit;
   final int items;
 
   Sale({
@@ -124,29 +98,28 @@ class Sale {
     required this.total,
     required this.paid,
     required this.change,
-    required this.profit,
     required this.items,
   });
 
-  Map<String, dynamic> toJson() => {
-        'id': id,
-        'date': date.toIso8601String(),
-        'total': total,
-        'paid': paid,
-        'change': change,
-        'profit': profit,
-        'items': items,
-      };
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'date': date.toIso8601String(),
+      'total': total,
+      'paid': paid,
+      'change': change,
+      'items': items,
+    };
+  }
 
   factory Sale.fromJson(Map<String, dynamic> json) {
     return Sale(
       id: json['id'].toString(),
-      date: DateTime.parse(json['date'].toString()),
-      total: (json['total'] ?? 0).toDouble(),
-      paid: (json['paid'] ?? 0).toDouble(),
-      change: (json['change'] ?? 0).toDouble(),
-      profit: (json['profit'] ?? 0).toDouble(),
-      items: (json['items'] ?? 0).toInt(),
+      date: DateTime.tryParse(json['date'].toString()) ?? DateTime.now(),
+      total: (json['total'] as num?)?.toDouble() ?? 0,
+      paid: (json['paid'] as num?)?.toDouble() ?? 0,
+      change: (json['change'] as num?)?.toDouble() ?? 0,
+      items: (json['items'] as num?)?.toInt() ?? 0,
     );
   }
 }
@@ -156,14 +129,7 @@ class Sale {
 // ============================================================
 
 class HomeScreen extends StatefulWidget {
-  final bool darkMode;
-  final ValueChanged<bool> onThemeChanged;
-
-  const HomeScreen({
-    super.key,
-    required this.darkMode,
-    required this.onThemeChanged,
-  });
+  const HomeScreen({super.key});
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -176,6 +142,7 @@ class _HomeScreenState extends State<HomeScreen> {
   List<Sale> sales = [];
 
   bool loading = true;
+  bool darkMode = false;
 
   @override
   void initState() {
@@ -184,77 +151,71 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> loadData() async {
-    final prefs = await SharedPreferences.getInstance();
-
     try {
-      final productsData = prefs.getString('products_v5');
+      final prefs = await SharedPreferences.getInstance();
 
-      if (productsData != null) {
-        final decoded = jsonDecode(productsData) as List;
-        products = decoded
-            .map((e) => Product.fromJson(Map<String, dynamic>.from(e)))
-            .toList();
-      } else {
-        // قراءة بيانات النسخة القديمة إن وجدت
-        final oldData = prefs.getString('products');
+      final productsData = prefs.getString('products');
+      final salesData = prefs.getString('sales');
 
-        if (oldData != null) {
-          final decoded = jsonDecode(oldData) as List;
+      if (productsData != null && productsData.isNotEmpty) {
+        final decoded = jsonDecode(productsData);
+
+        if (decoded is List) {
           products = decoded
-              .map((e) => Product.fromJson(Map<String, dynamic>.from(e)))
+              .map(
+                (item) => Product.fromJson(
+                  Map<String, dynamic>.from(item),
+                ),
+              )
               .toList();
         }
       }
 
-      final salesData = prefs.getString('sales_v5');
+      if (salesData != null && salesData.isNotEmpty) {
+        final decoded = jsonDecode(salesData);
 
-      if (salesData != null) {
-        final decoded = jsonDecode(salesData) as List;
-        sales = decoded
-            .map((e) => Sale.fromJson(Map<String, dynamic>.from(e)))
-            .toList();
-      } else {
-        final oldSales = prefs.getString('sales');
-
-        if (oldSales != null) {
-          final decoded = jsonDecode(oldSales) as List;
+        if (decoded is List) {
           sales = decoded
-              .map((e) => Sale.fromJson(Map<String, dynamic>.from(e)))
+              .map(
+                (item) => Sale.fromJson(
+                  Map<String, dynamic>.from(item),
+                ),
+              )
               .toList();
         }
       }
+
+      darkMode = prefs.getBool('darkMode') ?? false;
     } catch (_) {
       products = [];
       sales = [];
     }
 
-    if (mounted) {
-      setState(() {
-        loading = false;
-      });
-    }
+    if (!mounted) return;
+
+    setState(() {
+      loading = false;
+    });
   }
 
   Future<void> saveData() async {
     final prefs = await SharedPreferences.getInstance();
 
     await prefs.setString(
-      'products_v5',
-      jsonEncode(products.map((p) => p.toJson()).toList()),
+      'products',
+      jsonEncode(
+        products.map((product) => product.toJson()).toList(),
+      ),
     );
 
     await prefs.setString(
-      'sales_v5',
-      jsonEncode(sales.map((s) => s.toJson()).toList()),
+      'sales',
+      jsonEncode(
+        sales.map((sale) => sale.toJson()).toList(),
+      ),
     );
-  }
 
-  double get totalSales {
-    return sales.fold(0, (sum, sale) => sum + sale.total);
-  }
-
-  double get totalProfit {
-    return sales.fold(0, (sum, sale) => sum + sale.profit);
+    await prefs.setBool('darkMode', darkMode);
   }
 
   double get todaySales {
@@ -262,42 +223,48 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return sales
         .where(
-          (s) =>
-              s.date.year == now.year &&
-              s.date.month == now.month &&
-              s.date.day == now.day,
+          (sale) =>
+              sale.date.year == now.year &&
+              sale.date.month == now.month &&
+              sale.date.day == now.day,
         )
-        .fold(0, (sum, sale) => sum + sale.total);
-  }
-
-  double get todayProfit {
-    final now = DateTime.now();
-
-    return sales
-        .where(
-          (s) =>
-              s.date.year == now.year &&
-              s.date.month == now.month &&
-              s.date.day == now.day,
-        )
-        .fold(0, (sum, sale) => sum + sale.profit);
+        .fold(0.0, (sum, sale) => sum + sale.total);
   }
 
   int get todayInvoices {
     final now = DateTime.now();
 
     return sales.where(
-      (s) =>
-          s.date.year == now.year &&
-          s.date.month == now.month &&
-          s.date.day == now.day,
+      (sale) =>
+          sale.date.year == now.year &&
+          sale.date.month == now.month &&
+          sale.date.day == now.day,
     ).length;
+  }
+
+  double get totalSales {
+    return sales.fold(
+      0.0,
+      (sum, sale) => sum + sale.total,
+    );
+  }
+
+  int get totalProducts {
+    return products.length;
+  }
+
+  int get totalStock {
+    return products.fold(
+      0,
+      (sum, product) => sum + product.quantity,
+    );
   }
 
   void addProduct(Product product) {
     setState(() {
       products.add(product);
     });
+
     saveData();
   }
 
@@ -308,8 +275,11 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void deleteProduct(Product product) {
     setState(() {
-      products.removeWhere((p) => p.id == product.id);
+      products.removeWhere(
+        (item) => item.id == product.id,
+      );
     });
+
     saveData();
   }
 
@@ -317,20 +287,27 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() {
       sales.add(sale);
     });
+
     saveData();
   }
 
-  Future<void> saveAfterStockChange() async {
-    await saveData();
-    if (mounted) setState(() {});
+  void toggleTheme() {
+    setState(() {
+      darkMode = !darkMode;
+    });
+
+    saveData();
   }
 
   @override
   Widget build(BuildContext context) {
     if (loading) {
-      return const Scaffold(
-        body: Center(
-          child: CircularProgressIndicator(),
+      return const MaterialApp(
+        debugShowCheckedModeBanner: false,
+        home: Scaffold(
+          body: Center(
+            child: CircularProgressIndicator(),
+          ),
         ),
       );
     }
@@ -339,15 +316,15 @@ class _HomeScreenState extends State<HomeScreen> {
       DashboardPage(
         products: products,
         todaySales: todaySales,
-        todayProfit: todayProfit,
         todayInvoices: todayInvoices,
         totalSales: totalSales,
-        totalProfit: totalProfit,
+        totalProducts: totalProducts,
+        totalStock: totalStock,
       ),
       CashierPage(
         products: products,
         onSaleComplete: completeSale,
-        onStockChanged: saveAfterStockChange,
+        onStockChanged: saveData,
       ),
       ProductsPage(
         products: products,
@@ -359,8 +336,8 @@ class _HomeScreenState extends State<HomeScreen> {
         sales: sales,
       ),
       SettingsPage(
-        darkMode: widget.darkMode,
-        onThemeChanged: widget.onThemeChanged,
+        darkMode: darkMode,
+        onThemeChanged: toggleTheme,
       ),
     ];
 
@@ -372,52 +349,82 @@ class _HomeScreenState extends State<HomeScreen> {
       'الإعدادات',
     ];
 
-    return Directionality(
-      textDirection: TextDirection.rtl,
-      child: Scaffold(
-        appBar: AppBar(
-          title: Text(
-            titles[currentIndex],
-            style: const TextStyle(
-              fontWeight: FontWeight.bold,
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(
+        useMaterial3: true,
+        colorSchemeSeed: Colors.indigo,
+        brightness: Brightness.light,
+      ),
+      darkTheme: ThemeData(
+        useMaterial3: true,
+        colorSchemeSeed: Colors.indigo,
+        brightness: Brightness.dark,
+      ),
+      themeMode: darkMode ? ThemeMode.dark : ThemeMode.light,
+      home: Directionality(
+        textDirection: TextDirection.rtl,
+        child: Scaffold(
+          appBar: AppBar(
+            title: Text(
+              titles[currentIndex],
+              style: const TextStyle(
+                fontWeight: FontWeight.bold,
+              ),
             ),
+            actions: [
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                child: Center(
+                  child: Text(
+                    'V5.0',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: Theme.of(context)
+                          .colorScheme
+                          .primary,
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
-        ),
-        body: pages[currentIndex],
-        bottomNavigationBar: NavigationBar(
-          selectedIndex: currentIndex,
-          onDestinationSelected: (index) {
-            setState(() {
-              currentIndex = index;
-            });
-          },
-          destinations: const [
-            NavigationDestination(
-              icon: Icon(Icons.dashboard_outlined),
-              selectedIcon: Icon(Icons.dashboard),
-              label: 'الرئيسية',
-            ),
-            NavigationDestination(
-              icon: Icon(Icons.point_of_sale_outlined),
-              selectedIcon: Icon(Icons.point_of_sale),
-              label: 'الكاشير',
-            ),
-            NavigationDestination(
-              icon: Icon(Icons.inventory_2_outlined),
-              selectedIcon: Icon(Icons.inventory_2),
-              label: 'المنتجات',
-            ),
-            NavigationDestination(
-              icon: Icon(Icons.bar_chart_outlined),
-              selectedIcon: Icon(Icons.bar_chart),
-              label: 'التقارير',
-            ),
-            NavigationDestination(
-              icon: Icon(Icons.settings_outlined),
-              selectedIcon: Icon(Icons.settings),
-              label: 'الإعدادات',
-            ),
-          ],
+          body: pages[currentIndex],
+          bottomNavigationBar: NavigationBar(
+            selectedIndex: currentIndex,
+            onDestinationSelected: (index) {
+              setState(() {
+                currentIndex = index;
+              });
+            },
+            destinations: const [
+              NavigationDestination(
+                icon: Icon(Icons.dashboard_outlined),
+                selectedIcon: Icon(Icons.dashboard),
+                label: 'الرئيسية',
+              ),
+              NavigationDestination(
+                icon: Icon(Icons.point_of_sale_outlined),
+                selectedIcon: Icon(Icons.point_of_sale),
+                label: 'الكاشير',
+              ),
+              NavigationDestination(
+                icon: Icon(Icons.inventory_2_outlined),
+                selectedIcon: Icon(Icons.inventory_2),
+                label: 'المنتجات',
+              ),
+              NavigationDestination(
+                icon: Icon(Icons.bar_chart_outlined),
+                selectedIcon: Icon(Icons.bar_chart),
+                label: 'التقارير',
+              ),
+              NavigationDestination(
+                icon: Icon(Icons.settings_outlined),
+                selectedIcon: Icon(Icons.settings),
+                label: 'الإعدادات',
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -431,61 +438,93 @@ class _HomeScreenState extends State<HomeScreen> {
 class DashboardPage extends StatelessWidget {
   final List<Product> products;
   final double todaySales;
-  final double todayProfit;
   final int todayInvoices;
   final double totalSales;
-  final double totalProfit;
+  final int totalProducts;
+  final int totalStock;
 
   const DashboardPage({
     super.key,
     required this.products,
     required this.todaySales,
-    required this.todayProfit,
     required this.todayInvoices,
     required this.totalSales,
-    required this.totalProfit,
+    required this.totalProducts,
+    required this.totalStock,
   });
 
   @override
   Widget build(BuildContext context) {
     final lowStock =
-        products.where((p) => p.quantity <= p.lowStock).toList();
+        products.where((product) => product.quantity <= 5).toList();
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(
         children: [
-          const Align(
-            alignment: Alignment.centerRight,
-            child: Text(
-              'مرحبًا بك في CASHIER PRO 👋',
-              style: TextStyle(
-                fontSize: 23,
-                fontWeight: FontWeight.bold,
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(18),
+              child: Row(
+                children: [
+                  CircleAvatar(
+                    radius: 30,
+                    child: const Icon(
+                      Icons.point_of_sale,
+                      size: 30,
+                    ),
+                  ),
+                  const SizedBox(width: 15),
+                  const Expanded(
+                    child: Column(
+                      crossAxisAlignment:
+                          CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'مرحبًا بك 👋',
+                          style: TextStyle(
+                            fontSize: 16,
+                          ),
+                        ),
+                        SizedBox(height: 4),
+                        Text(
+                          'CASHIER PRO',
+                          style: TextStyle(
+                            fontSize: 24,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        SizedBox(height: 4),
+                        Text(
+                          'نظام إدارة المبيعات والمخزون',
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
 
-          const SizedBox(height: 20),
+          const SizedBox(height: 16),
 
           GridView.count(
             crossAxisCount:
-                MediaQuery.of(context).size.width >= 800 ? 4 : 2,
+                MediaQuery.of(context).size.width > 700
+                    ? 4
+                    : 2,
             shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
+            physics:
+                const NeverScrollableScrollPhysics(),
             crossAxisSpacing: 12,
             mainAxisSpacing: 12,
             childAspectRatio: 1.35,
             children: [
               StatCard(
                 title: 'مبيعات اليوم',
-                value: money(todaySales),
+                value:
+                    '${todaySales.toStringAsFixed(2)} ج',
                 icon: Icons.payments,
-              ),
-              StatCard(
-                title: 'أرباح اليوم',
-                value: money(todayProfit),
-                icon: Icons.trending_up,
               ),
               StatCard(
                 title: 'فواتير اليوم',
@@ -493,30 +532,35 @@ class DashboardPage extends StatelessWidget {
                 icon: Icons.receipt_long,
               ),
               StatCard(
-                title: 'المنتجات',
-                value: '${products.length}',
-                icon: Icons.inventory,
+                title: 'إجمالي المبيعات',
+                value:
+                    '${totalSales.toStringAsFixed(2)} ج',
+                icon: Icons.trending_up,
+              ),
+              StatCard(
+                title: 'عدد المنتجات',
+                value: '$totalProducts',
+                icon: Icons.inventory_2,
               ),
             ],
           ),
 
-          const SizedBox(height: 15),
+          const SizedBox(height: 16),
 
           Card(
             child: ListTile(
-              leading: Icon(
-                lowStock.isEmpty
-                    ? Icons.check_circle
-                    : Icons.warning_amber_rounded,
+              leading: const Icon(
+                Icons.inventory,
+                size: 32,
               ),
               title: const Text(
-                'حالة المخزون',
-                style: TextStyle(fontWeight: FontWeight.bold),
+                'إجمالي المخزون',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                ),
               ),
               subtitle: Text(
-                lowStock.isEmpty
-                    ? 'المخزون جيد ولا توجد منتجات منخفضة'
-                    : '${lowStock.length} منتج منخفض المخزون',
+                '$totalStock قطعة',
               ),
             ),
           ),
@@ -524,40 +568,47 @@ class DashboardPage extends StatelessWidget {
           const SizedBox(height: 12),
 
           Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                children: [
-                  const Text(
-                    'ملخص المبيعات',
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 15),
-                  summaryRow('إجمالي المبيعات', totalSales),
-                  summaryRow('إجمالي الأرباح', totalProfit),
-                ],
+            child: ExpansionTile(
+              leading: Icon(
+                lowStock.isEmpty
+                    ? Icons.check_circle
+                    : Icons.warning_amber_rounded,
               ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget summaryRow(String title, double value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 7),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(title),
-          Text(
-            money(value),
-            style: const TextStyle(
-              fontWeight: FontWeight.bold,
+              title: const Text(
+                'حالة المخزون',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              subtitle: Text(
+                lowStock.isEmpty
+                    ? 'المخزون جيد حاليًا'
+                    : '${lowStock.length} منتج منخفض المخزون',
+              ),
+              children: lowStock.isEmpty
+                  ? const [
+                      ListTile(
+                        title: Text(
+                          'لا توجد منتجات منخفضة المخزون',
+                        ),
+                      ),
+                    ]
+                  : lowStock
+                      .map(
+                        (product) => ListTile(
+                          leading: const Icon(
+                            Icons.warning,
+                          ),
+                          title: Text(product.name),
+                          trailing: Text(
+                            '${product.quantity}',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      )
+                      .toList(),
             ),
           ),
         ],
@@ -588,15 +639,22 @@ class StatCard extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.all(14),
         child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.end,
+          mainAxisAlignment:
+              MainAxisAlignment.center,
+          crossAxisAlignment:
+              CrossAxisAlignment.end,
           children: [
-            Icon(icon, size: 30),
+            Icon(
+              icon,
+              size: 30,
+            ),
             const SizedBox(height: 8),
             Text(title),
-            const SizedBox(height: 4),
+            const SizedBox(height: 5),
             Text(
               value,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
               style: const TextStyle(
                 fontSize: 19,
                 fontWeight: FontWeight.bold,
@@ -610,7 +668,7 @@ class StatCard extends StatelessWidget {
 }
 
 // ============================================================
-// CASHIER
+// CASHIER V5
 // ============================================================
 
 class CashierPage extends StatefulWidget {
@@ -631,53 +689,49 @@ class CashierPage extends StatefulWidget {
 
 class _CashierPageState extends State<CashierPage> {
   final List<CartItem> cart = [];
-  String search = '';
 
-  double get total =>
-      cart.fold(0, (sum, item) => sum + item.total);
+  String searchQuery = '';
 
-  double get profit =>
-      cart.fold(0, (sum, item) => sum + item.profit);
+  double get total {
+    return cart.fold(
+      0.0,
+      (sum, item) => sum + item.total,
+    );
+  }
+
+  int get totalItems {
+    return cart.fold(
+      0,
+      (sum, item) => sum + item.quantity,
+    );
+  }
 
   List<Product> get filteredProducts {
-    final query = search.trim().toLowerCase();
+    final query = searchQuery.trim().toLowerCase();
 
     if (query.isEmpty) {
       return widget.products;
     }
 
-    return widget.products
-        .where(
-          (p) => p.name.toLowerCase().contains(query),
-        )
-        .toList();
+    return widget.products.where((product) {
+      return product.name.toLowerCase().contains(query);
+    }).toList();
   }
 
   void addToCart(Product product) {
     if (product.quantity <= 0) {
-      showMessage(context, 'المنتج غير متوفر');
+      showMessage(
+        context,
+        'المنتج "${product.name}" غير متوفر',
+      );
       return;
     }
 
-    CartItem? existing;
+    final index = cart.indexWhere(
+      (item) => item.product.id == product.id,
+    );
 
-    for (final item in cart) {
-      if (item.product.id == product.id) {
-        existing = item;
-        break;
-      }
-    }
-
-    if (existing != null) {
-      if (existing.quantity >= product.quantity) {
-        showMessage(context, 'الكمية المطلوبة غير متوفرة');
-        return;
-      }
-
-      setState(() {
-        existing!.quantity++;
-      });
-    } else {
+    if (index == -1) {
       setState(() {
         cart.add(
           CartItem(
@@ -686,12 +740,28 @@ class _CashierPageState extends State<CashierPage> {
           ),
         );
       });
+      return;
     }
+
+    if (cart[index].quantity >= product.quantity) {
+      showMessage(
+        context,
+        'لا توجد كمية إضافية من هذا المنتج',
+      );
+      return;
+    }
+
+    setState(() {
+      cart[index].quantity++;
+    });
   }
 
-  void increase(CartItem item) {
+  void increaseItem(CartItem item) {
     if (item.quantity >= item.product.quantity) {
-      showMessage(context, 'لا توجد كمية إضافية');
+      showMessage(
+        context,
+        'وصلت للكمية الموجودة في المخزون',
+      );
       return;
     }
 
@@ -700,19 +770,58 @@ class _CashierPageState extends State<CashierPage> {
     });
   }
 
-  void decrease(CartItem item) {
-    setState(() {
-      if (item.quantity > 1) {
-        item.quantity--;
-      } else {
+  void decreaseItem(CartItem item) {
+    if (item.quantity <= 1) {
+      setState(() {
         cart.remove(item);
-      }
+      });
+      return;
+    }
+
+    setState(() {
+      item.quantity--;
     });
+  }
+
+  void clearCart() {
+    if (cart.isEmpty) return;
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('تفريغ السلة'),
+          content: const Text(
+            'هل تريد إزالة جميع المنتجات من السلة؟',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context);
+              },
+              child: const Text('إلغاء'),
+            ),
+            FilledButton(
+              onPressed: () {
+                setState(() {
+                  cart.clear();
+                });
+                Navigator.pop(context);
+              },
+              child: const Text('تفريغ'),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   Future<void> checkout() async {
     if (cart.isEmpty) {
-      showMessage(context, 'السلة فارغة');
+      showMessage(
+        context,
+        'السلة فارغة',
+      );
       return;
     }
 
@@ -729,9 +838,9 @@ class _CashierPageState extends State<CashierPage> {
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(
-                'الإجمالي: ${money(total)}',
+                'الإجمالي: ${total.toStringAsFixed(2)} ج',
                 style: const TextStyle(
-                  fontSize: 19,
+                  fontSize: 20,
                   fontWeight: FontWeight.bold,
                 ),
               ),
@@ -753,17 +862,26 @@ class _CashierPageState extends State<CashierPage> {
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(context),
+              onPressed: () {
+                Navigator.pop(context);
+              },
               child: const Text('إلغاء'),
             ),
-            FilledButton(
+            FilledButton.icon(
               onPressed: () {
                 final value =
-                    double.tryParse(paidController.text) ?? 0;
+                    double.tryParse(
+                          paidController.text.trim(),
+                        ) ??
+                        0;
 
-                Navigator.pop(context, value);
+                Navigator.pop(
+                  context,
+                  value,
+                );
               },
-              child: const Text('تأكيد البيع'),
+              icon: const Icon(Icons.check),
+              label: const Text('تأكيد البيع'),
             ),
           ],
         );
@@ -775,60 +893,82 @@ class _CashierPageState extends State<CashierPage> {
     if (paid == null) return;
 
     if (paid < total) {
-      showMessage(context, 'المبلغ المدفوع أقل من الإجمالي');
+      showMessage(
+        context,
+        'المبلغ المدفوع أقل من الإجمالي',
+      );
       return;
     }
 
-    final sale = Sale(
-      id: DateTime.now().millisecondsSinceEpoch.toString(),
-      date: DateTime.now(),
-      total: total,
-      paid: paid,
-      change: paid - total,
-      profit: profit,
-      items: cart.fold(
-        0,
-        (sum, item) => sum + item.quantity,
-      ),
-    );
+    final change = paid - total;
 
     for (final item in cart) {
-      item.product.quantity -= item.quantity;
-
-      if (item.product.quantity < 0) {
-        item.product.quantity = 0;
+      if (item.quantity > item.product.quantity) {
+        showMessage(
+          context,
+          'الكمية المطلوبة غير متوفرة',
+        );
+        return;
       }
     }
 
+    for (final item in cart) {
+      item.product.quantity -= item.quantity;
+    }
+
+    final sale = Sale(
+      id: DateTime.now()
+          .millisecondsSinceEpoch
+          .toString(),
+      date: DateTime.now(),
+      total: total,
+      paid: paid,
+      change: change,
+      items: totalItems,
+    );
+
     widget.onSaleComplete(sale);
     await widget.onStockChanged();
-
-    if (!mounted) return;
 
     setState(() {
       cart.clear();
     });
 
-    await showDialog(
+    if (!mounted) return;
+
+    showDialog(
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: const Text('تم البيع بنجاح ✅'),
+          title: const Text(
+            'تمت عملية البيع بنجاح ✅',
+          ),
           content: Column(
             mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('رقم الفاتورة: #${sale.id.substring(sale.id.length - 6)}'),
-              const SizedBox(height: 8),
-              Text('الإجمالي: ${money(sale.total)}'),
-              Text('المدفوع: ${money(sale.paid)}'),
-              Text('الباقي: ${money(sale.change)}'),
-              Text('الربح: ${money(sale.profit)}'),
+              infoRow(
+                'الإجمالي',
+                '${sale.total.toStringAsFixed(2)} ج',
+              ),
+              infoRow(
+                'المدفوع',
+                '${sale.paid.toStringAsFixed(2)} ج',
+              ),
+              infoRow(
+                'الباقي',
+                '${sale.change.toStringAsFixed(2)} ج',
+              ),
+              infoRow(
+                'عدد القطع',
+                '${sale.items}',
+              ),
             ],
           ),
           actions: [
             FilledButton(
-              onPressed: () => Navigator.pop(context),
+              onPressed: () {
+                Navigator.pop(context);
+              },
               child: const Text('تم'),
             ),
           ],
@@ -837,32 +977,62 @@ class _CashierPageState extends State<CashierPage> {
     );
   }
 
+  Widget infoRow(String title, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(
+        vertical: 5,
+      ),
+      child: Row(
+        children: [
+          Text(
+            title,
+            style: const TextStyle(
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const Spacer(),
+          Text(value),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Column(
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(12, 12, 12, 5),
+          padding: const EdgeInsets.fromLTRB(
+            12,
+            12,
+            12,
+            6,
+          ),
           child: TextField(
             onChanged: (value) {
               setState(() {
-                search = value;
+                searchQuery = value;
               });
             },
             decoration: InputDecoration(
               hintText: 'ابحث عن منتج...',
-              prefixIcon: const Icon(Icons.search),
-              suffixIcon: search.isEmpty
+              prefixIcon: const Icon(
+                Icons.search,
+              ),
+              suffixIcon: searchQuery.isEmpty
                   ? null
                   : IconButton(
                       onPressed: () {
                         setState(() {
-                          search = '';
+                          searchQuery = '';
                         });
                       },
                       icon: const Icon(Icons.clear),
                     ),
-              border: const OutlineInputBorder(),
+              border: OutlineInputBorder(
+                borderRadius:
+                    BorderRadius.circular(14),
+              ),
             ),
           ),
         ),
@@ -870,10 +1040,15 @@ class _CashierPageState extends State<CashierPage> {
         Expanded(
           flex: 5,
           child: filteredProducts.isEmpty
-              ? const Center(
+              ? Center(
                   child: Text(
-                    'لا توجد منتجات',
-                    style: TextStyle(fontSize: 20),
+                    widget.products.isEmpty
+                        ? 'لا توجد منتجات\nأضف منتجات من قسم المنتجات'
+                        : 'لا يوجد منتج بهذا الاسم',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      fontSize: 19,
+                    ),
                   ),
                 )
               : GridView.builder(
@@ -881,50 +1056,98 @@ class _CashierPageState extends State<CashierPage> {
                   gridDelegate:
                       SliverGridDelegateWithFixedCrossAxisCount(
                     crossAxisCount:
-                        MediaQuery.of(context).size.width >= 800
-                            ? 4
-                            : 2,
+                        MediaQuery.of(context)
+                                .size
+                                .width >
+                            900
+                            ? 5
+                            : MediaQuery.of(context)
+                                        .size
+                                        .width >
+                                    600
+                                ? 4
+                                : 2,
                     crossAxisSpacing: 10,
                     mainAxisSpacing: 10,
                     childAspectRatio: 1.05,
                   ),
-                  itemCount: filteredProducts.length,
+                  itemCount:
+                      filteredProducts.length,
                   itemBuilder: (context, index) {
-                    final product = filteredProducts[index];
+                    final product =
+                        filteredProducts[index];
+
+                    final outOfStock =
+                        product.quantity <= 0;
 
                     return Card(
+                      clipBehavior:
+                          Clip.antiAlias,
                       child: InkWell(
-                        borderRadius: BorderRadius.circular(12),
-                        onTap: () => addToCart(product),
+                        onTap: outOfStock
+                            ? null
+                            : () =>
+                                addToCart(product),
                         child: Padding(
-                          padding: const EdgeInsets.all(10),
+                          padding:
+                              const EdgeInsets.all(10),
                           child: Column(
                             mainAxisAlignment:
                                 MainAxisAlignment.center,
                             children: [
-                              const Icon(
-                                Icons.shopping_bag,
+                              Icon(
+                                outOfStock
+                                    ? Icons
+                                        .remove_shopping_cart
+                                    : Icons
+                                        .shopping_bag,
                                 size: 34,
                               ),
-                              const SizedBox(height: 6),
+                              const SizedBox(
+                                height: 7,
+                              ),
                               Text(
                                 product.name,
-                                textAlign: TextAlign.center,
                                 maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.bold,
+                                textAlign:
+                                    TextAlign.center,
+                                overflow:
+                                    TextOverflow.ellipsis,
+                                style:
+                                    const TextStyle(
+                                  fontWeight:
+                                      FontWeight.bold,
                                 ),
                               ),
-                              const SizedBox(height: 5),
-                              Text(money(product.sellPrice)),
+                              const SizedBox(
+                                height: 5,
+                              ),
                               Text(
-                                'المخزون: ${product.quantity}',
+                                '${product.price.toStringAsFixed(2)} ج',
+                                style:
+                                    const TextStyle(
+                                  fontWeight:
+                                      FontWeight.bold,
+                                ),
+                              ),
+                              const SizedBox(
+                                height: 3,
+                              ),
+                              Text(
+                                outOfStock
+                                    ? 'نفد المخزون'
+                                    : 'المتاح: ${product.quantity}',
                                 style: TextStyle(
-                                  color: product.quantity <=
-                                          product.lowStock
-                                      ? Colors.red
-                                      : null,
+                                  fontSize: 12,
+                                  color:
+                                      outOfStock
+                                          ? Colors.red
+                                          : product.quantity <=
+                                                  5
+                                              ? Colors.orange
+                                              : null,
+                                  fontWeight:
+                                      FontWeight.bold,
                                 ),
                               ),
                             ],
@@ -942,45 +1165,123 @@ class _CashierPageState extends State<CashierPage> {
           flex: 4,
           child: Column(
             children: [
+              Padding(
+                padding:
+                    const EdgeInsets.fromLTRB(
+                  12,
+                  8,
+                  12,
+                  4,
+                ),
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.shopping_cart,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      'السلة ($totalItems)',
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight:
+                            FontWeight.bold,
+                      ),
+                    ),
+                    const Spacer(),
+                    if (cart.isNotEmpty)
+                      TextButton.icon(
+                        onPressed: clearCart,
+                        icon: const Icon(
+                          Icons.delete_sweep,
+                        ),
+                        label: const Text(
+                          'تفريغ',
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+
               Expanded(
                 child: cart.isEmpty
                     ? const Center(
-                        child: Text('السلة فارغة'),
+                        child: Text(
+                          'السلة فارغة',
+                          style:
+                              TextStyle(
+                            fontSize: 17,
+                          ),
+                        ),
                       )
                     : ListView.builder(
                         itemCount: cart.length,
-                        itemBuilder: (context, index) {
-                          final item = cart[index];
+                        itemBuilder:
+                            (context, index) {
+                          final item =
+                              cart[index];
 
                           return ListTile(
-                            leading: CircleAvatar(
-                              child: Text('${item.quantity}'),
+                            dense: true,
+                            leading:
+                                const CircleAvatar(
+                              child: Icon(
+                                Icons
+                                    .shopping_bag,
+                              ),
                             ),
-                            title: Text(item.product.name),
+                            title: Text(
+                              item.product.name,
+                              maxLines: 1,
+                              overflow:
+                                  TextOverflow
+                                      .ellipsis,
+                            ),
                             subtitle: Text(
-                              '${money(item.product.sellPrice)} × ${item.quantity}',
+                              '${item.product.price.toStringAsFixed(2)} ج × ${item.quantity}',
                             ),
                             trailing: Row(
-                              mainAxisSize: MainAxisSize.min,
+                              mainAxisSize:
+                                  MainAxisSize.min,
                               children: [
                                 IconButton(
                                   onPressed: () =>
-                                      decrease(item),
-                                  icon: const Icon(
-                                    Icons.remove_circle_outline,
+                                      decreaseItem(
+                                    item,
+                                  ),
+                                  icon:
+                                      const Icon(
+                                    Icons.remove,
                                   ),
                                 ),
                                 Text(
                                   '${item.quantity}',
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.bold,
+                                  style:
+                                      const TextStyle(
+                                    fontWeight:
+                                        FontWeight
+                                            .bold,
                                   ),
                                 ),
                                 IconButton(
                                   onPressed: () =>
-                                      increase(item),
-                                  icon: const Icon(
-                                    Icons.add_circle_outline,
+                                      increaseItem(
+                                    item,
+                                  ),
+                                  icon:
+                                      const Icon(
+                                    Icons.add,
+                                  ),
+                                ),
+                                const SizedBox(
+                                  width: 5,
+                                ),
+                                Text(
+                                  '${item.total.toStringAsFixed(2)} ج',
+                                  style:
+                                      const TextStyle(
+                                    fontWeight:
+                                        FontWeight
+                                            .bold,
                                   ),
                                 ),
                               ],
@@ -990,31 +1291,32 @@ class _CashierPageState extends State<CashierPage> {
                       ),
               ),
 
-              Padding(
-                padding: const EdgeInsets.all(12),
+              Container(
+                padding:
+                    const EdgeInsets.fromLTRB(
+                  12,
+                  8,
+                  12,
+                  12,
+                ),
                 child: Row(
                   children: [
                     Expanded(
-                      child: Column(
-                        crossAxisAlignment:
-                            CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'الإجمالي: ${money(total)}',
-                            style: const TextStyle(
-                              fontSize: 19,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          Text(
-                            'الربح: ${money(profit)}',
-                          ),
-                        ],
+                      child: Text(
+                        'الإجمالي: ${total.toStringAsFixed(2)} ج',
+                        style:
+                            const TextStyle(
+                          fontSize: 19,
+                          fontWeight:
+                              FontWeight.bold,
+                        ),
                       ),
                     ),
                     FilledButton.icon(
                       onPressed: checkout,
-                      icon: const Icon(Icons.receipt_long),
+                      icon: const Icon(
+                        Icons.receipt_long,
+                      ),
                       label: const Text('بيع'),
                     ),
                   ],
@@ -1047,42 +1349,49 @@ class ProductsPage extends StatefulWidget {
   });
 
   @override
-  State<ProductsPage> createState() => _ProductsPageState();
+  State<ProductsPage> createState() =>
+      _ProductsPageState();
 }
 
-class _ProductsPageState extends State<ProductsPage> {
-  String search = '';
+class _ProductsPageState
+    extends State<ProductsPage> {
+  String searchQuery = '';
 
   List<Product> get filteredProducts {
-    final q = search.trim().toLowerCase();
+    final query =
+        searchQuery.trim().toLowerCase();
 
-    if (q.isEmpty) return widget.products;
+    if (query.isEmpty) {
+      return widget.products;
+    }
 
-    return widget.products
-        .where(
-          (p) => p.name.toLowerCase().contains(q),
-        )
-        .toList();
+    return widget.products.where((product) {
+      return product.name
+          .toLowerCase()
+          .contains(query);
+    }).toList();
   }
 
-  void showProductDialog({Product? product}) {
+  void showProductDialog({
+    Product? product,
+  }) {
     final nameController =
-        TextEditingController(text: product?.name ?? '');
-
-    final buyController = TextEditingController(
-      text: product?.buyPrice.toString() ?? '',
+        TextEditingController(
+      text: product?.name ?? '',
     );
 
-    final sellController = TextEditingController(
-      text: product?.sellPrice.toString() ?? '',
+    final priceController =
+        TextEditingController(
+      text: product == null
+          ? ''
+          : product.price.toString(),
     );
 
-    final quantityController = TextEditingController(
-      text: product?.quantity.toString() ?? '',
-    );
-
-    final lowStockController = TextEditingController(
-      text: product?.lowStock.toString() ?? '5',
+    final quantityController =
+        TextEditingController(
+      text: product == null
+          ? ''
+          : product.quantity.toString(),
     );
 
     showDialog(
@@ -1090,68 +1399,58 @@ class _ProductsPageState extends State<ProductsPage> {
       builder: (context) {
         return AlertDialog(
           title: Text(
-            product == null ? 'إضافة منتج' : 'تعديل المنتج',
+            product == null
+                ? 'إضافة منتج'
+                : 'تعديل المنتج',
           ),
           content: SingleChildScrollView(
             child: Column(
               children: [
                 TextField(
                   controller: nameController,
-                  decoration: const InputDecoration(
+                  textInputAction:
+                      TextInputAction.next,
+                  decoration:
+                      const InputDecoration(
                     labelText: 'اسم المنتج',
-                    border: OutlineInputBorder(),
+                    prefixIcon:
+                        Icon(Icons.inventory_2),
+                    border:
+                        OutlineInputBorder(),
                   ),
                 ),
-
                 const SizedBox(height: 12),
-
                 TextField(
-                  controller: buyController,
+                  controller:
+                      priceController,
                   keyboardType:
-                      const TextInputType.numberWithOptions(
+                      const TextInputType
+                          .numberWithOptions(
                     decimal: true,
                   ),
-                  decoration: const InputDecoration(
-                    labelText: 'سعر الشراء',
+                  decoration:
+                      const InputDecoration(
+                    labelText: 'السعر',
                     suffixText: 'ج',
-                    border: OutlineInputBorder(),
+                    prefixIcon:
+                        Icon(Icons.payments),
+                    border:
+                        OutlineInputBorder(),
                   ),
                 ),
-
                 const SizedBox(height: 12),
-
                 TextField(
-                  controller: sellController,
+                  controller:
+                      quantityController,
                   keyboardType:
-                      const TextInputType.numberWithOptions(
-                    decimal: true,
-                  ),
-                  decoration: const InputDecoration(
-                    labelText: 'سعر البيع',
-                    suffixText: 'ج',
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-
-                const SizedBox(height: 12),
-
-                TextField(
-                  controller: quantityController,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(
+                      TextInputType.number,
+                  decoration:
+                      const InputDecoration(
                     labelText: 'الكمية',
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-
-                const SizedBox(height: 12),
-
-                TextField(
-                  controller: lowStockController,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(
-                    labelText: 'حد التنبيه للمخزون',
-                    border: OutlineInputBorder(),
+                    prefixIcon:
+                        Icon(Icons.numbers),
+                    border:
+                        OutlineInputBorder(),
                   ),
                 ),
               ],
@@ -1159,41 +1458,39 @@ class _ProductsPageState extends State<ProductsPage> {
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(context),
+              onPressed: () {
+                Navigator.pop(context);
+              },
               child: const Text('إلغاء'),
             ),
-            FilledButton(
+            FilledButton.icon(
               onPressed: () {
-                final name = nameController.text.trim();
+                final name =
+                    nameController.text
+                        .trim();
 
-                final buy =
-                    double.tryParse(buyController.text) ?? 0;
-
-                final sell =
-                    double.tryParse(sellController.text) ?? 0;
+                final price =
+                    double.tryParse(
+                          priceController
+                              .text
+                              .trim(),
+                        ) ??
+                        0;
 
                 final quantity =
-                    int.tryParse(quantityController.text) ?? 0;
-
-                final lowStock =
-                    int.tryParse(lowStockController.text) ?? 5;
+                    int.tryParse(
+                          quantityController
+                              .text
+                              .trim(),
+                        ) ??
+                        0;
 
                 if (name.isEmpty ||
-                    buy < 0 ||
-                    sell <= 0 ||
-                    quantity < 0 ||
-                    lowStock < 0) {
+                    price <= 0 ||
+                    quantity < 0) {
                   showMessage(
                     context,
                     'أدخل بيانات صحيحة',
-                  );
-                  return;
-                }
-
-                if (sell < buy) {
-                  showMessage(
-                    context,
-                    'سعر البيع أقل من سعر الشراء',
                   );
                   return;
                 }
@@ -1205,27 +1502,23 @@ class _ProductsPageState extends State<ProductsPage> {
                           .millisecondsSinceEpoch
                           .toString(),
                       name: name,
-                      buyPrice: buy,
-                      sellPrice: sell,
+                      price: price,
                       quantity: quantity,
-                      lowStock: lowStock,
                     ),
                   );
                 } else {
                   product.name = name;
-                  product.buyPrice = buy;
-                  product.sellPrice = sell;
-                  product.quantity = quantity;
-                  product.lowStock = lowStock;
+                  product.price = price;
+                  product.quantity =
+                      quantity;
 
                   widget.onUpdate(product);
                 }
 
                 Navigator.pop(context);
-
-                setState(() {});
               },
-              child: const Text('حفظ'),
+              icon: const Icon(Icons.save),
+              label: const Text('حفظ'),
             ),
           ],
         );
@@ -1238,20 +1531,23 @@ class _ProductsPageState extends State<ProductsPage> {
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: const Text('حذف المنتج'),
+          title: const Text(
+            'حذف المنتج',
+          ),
           content: Text(
             'هل تريد حذف "${product.name}"؟',
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(context),
+              onPressed: () {
+                Navigator.pop(context);
+              },
               child: const Text('إلغاء'),
             ),
             FilledButton(
               onPressed: () {
                 widget.onDelete(product);
                 Navigator.pop(context);
-                setState(() {});
               },
               child: const Text('حذف'),
             ),
@@ -1272,81 +1568,142 @@ class _ProductsPageState extends State<ProductsPage> {
               child: TextField(
                 onChanged: (value) {
                   setState(() {
-                    search = value;
+                    searchQuery = value;
                   });
                 },
-                decoration: const InputDecoration(
-                  hintText: 'البحث عن منتج...',
-                  prefixIcon: Icon(Icons.search),
-                  border: OutlineInputBorder(),
+                decoration:
+                    InputDecoration(
+                  hintText:
+                      'ابحث في المنتجات...',
+                  prefixIcon:
+                      const Icon(
+                    Icons.search,
+                  ),
+                  suffixIcon:
+                      searchQuery.isEmpty
+                          ? null
+                          : IconButton(
+                              onPressed: () {
+                                setState(() {
+                                  searchQuery =
+                                      '';
+                                });
+                              },
+                              icon:
+                                  const Icon(
+                                Icons.clear,
+                              ),
+                            ),
+                  border:
+                      OutlineInputBorder(
+                    borderRadius:
+                        BorderRadius.circular(
+                      14,
+                    ),
+                  ),
                 ),
               ),
             ),
-
             Expanded(
               child: filteredProducts.isEmpty
-                  ? const Center(
+                  ? Center(
                       child: Text(
-                        'لا توجد منتجات',
-                        style: TextStyle(fontSize: 20),
+                        widget.products.isEmpty
+                            ? 'لا توجد منتجات\nاضغط + لإضافة منتج'
+                            : 'لا يوجد منتج بهذا الاسم',
+                        textAlign:
+                            TextAlign.center,
+                        style:
+                            const TextStyle(
+                          fontSize: 19,
+                        ),
                       ),
                     )
                   : ListView.builder(
-                      padding: const EdgeInsets.fromLTRB(
+                      padding:
+                          const EdgeInsets.fromLTRB(
                         12,
                         0,
                         12,
                         90,
                       ),
-                      itemCount: filteredProducts.length,
-                      itemBuilder: (context, index) {
+                      itemCount:
+                          filteredProducts.length,
+                      itemBuilder:
+                          (context, index) {
                         final product =
-                            filteredProducts[index];
+                            filteredProducts[
+                                index];
 
-                        final low =
-                            product.quantity <= product.lowStock;
+                        final lowStock =
+                            product.quantity <=
+                                5;
 
                         return Card(
                           child: ListTile(
-                            leading: CircleAvatar(
+                            leading:
+                                CircleAvatar(
                               child: Icon(
-                                low
-                                    ? Icons.warning
-                                    : Icons.inventory_2,
+                                lowStock
+                                    ? Icons
+                                        .warning
+                                    : Icons
+                                        .inventory_2,
                               ),
                             ),
                             title: Text(
                               product.name,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.bold,
+                              style:
+                                  const TextStyle(
+                                fontWeight:
+                                    FontWeight
+                                        .bold,
                               ),
                             ),
-                            subtitle: Text(
-                              'شراء: ${money(product.buyPrice)}\n'
-                              'بيع: ${money(product.sellPrice)}\n'
-                              'المخزون: ${product.quantity} '
-                              '${low ? '⚠️' : ''}',
+                            subtitle:
+                                Text(
+                              'السعر: ${product.price.toStringAsFixed(2)} ج\n'
+                              'المخزون: ${product.quantity}',
                             ),
                             isThreeLine: true,
                             trailing:
-                                PopupMenuButton<String>(
-                              onSelected: (value) {
-                                if (value == 'edit') {
+                                PopupMenuButton<
+                                    String>(
+                              onSelected:
+                                  (value) {
+                                if (value ==
+                                    'edit') {
                                   showProductDialog(
-                                    product: product,
+                                    product:
+                                        product,
                                   );
-                                } else if (value == 'delete') {
-                                  confirmDelete(product);
+                                }
+
+                                if (value ==
+                                    'delete') {
+                                  confirmDelete(
+                                    product,
+                                  );
                                 }
                               },
-                              itemBuilder: (context) => const [
+                              itemBuilder:
+                                  (context) =>
+                                      const [
                                 PopupMenuItem(
-                                  value: 'edit',
-                                  child: Text('تعديل'),
+                                  value:
+                                      'edit',
+                                  child:
+                                      Text(
+                                    'تعديل',
+                                  ),
                                 ),
                                 PopupMenuItem(
-                                  value: 'delete',
-                                  child: Text('حذف'),
+                                  value:
+                                      'delete',
+                                  child:
+                                      Text(
+                                    'حذف',
+                                  ),
                                 ),
                               ],
                             ),
@@ -1357,14 +1714,16 @@ class _ProductsPageState extends State<ProductsPage> {
             ),
           ],
         ),
-
         Positioned(
-          left: 16,
           bottom: 16,
+          left: 16,
           child: FloatingActionButton.extended(
-            onPressed: () => showProductDialog(),
+            onPressed: () =>
+                showProductDialog(),
             icon: const Icon(Icons.add),
-            label: const Text('إضافة منتج'),
+            label: const Text(
+              'إضافة منتج',
+            ),
           ),
         ),
       ],
@@ -1386,14 +1745,25 @@ class ReportsPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final totalSales =
-        sales.fold(0.0, (sum, sale) => sum + sale.total);
+    final total = sales.fold(
+      0.0,
+      (sum, sale) => sum + sale.total,
+    );
 
-    final totalProfit =
-        sales.fold(0.0, (sum, sale) => sum + sale.profit);
+    final totalPaid = sales.fold(
+      0.0,
+      (sum, sale) => sum + sale.paid,
+    );
 
-    final totalItems =
-        sales.fold(0, (sum, sale) => sum + sale.items);
+    final totalChange = sales.fold(
+      0.0,
+      (sum, sale) => sum + sale.change,
+    );
+
+    final items = sales.fold(
+      0,
+      (sum, sale) => sum + sale.items,
+    );
 
     return Column(
       children: [
@@ -1401,34 +1771,65 @@ class ReportsPage extends StatelessWidget {
           padding: const EdgeInsets.all(12),
           child: GridView.count(
             crossAxisCount:
-                MediaQuery.of(context).size.width >= 700
-                    ? 3
-                    : 1,
+                MediaQuery.of(context)
+                        .size
+                        .width >
+                    700
+                    ? 4
+                    : 2,
             shrinkWrap: true,
             physics:
                 const NeverScrollableScrollPhysics(),
-            mainAxisSpacing: 10,
             crossAxisSpacing: 10,
-            childAspectRatio: 3,
+            mainAxisSpacing: 10,
+            childAspectRatio: 1.5,
             children: [
               StatCard(
-                title: 'إجمالي المبيعات',
-                value: money(totalSales),
-                icon: Icons.payments,
+                title: 'المبيعات',
+                value:
+                    '${total.toStringAsFixed(2)} ج',
+                icon: Icons.analytics,
               ),
               StatCard(
-                title: 'إجمالي الأرباح',
-                value: money(totalProfit),
-                icon: Icons.trending_up,
+                title: 'الفواتير',
+                value: '${sales.length}',
+                icon: Icons.receipt_long,
               ),
               StatCard(
-                title: 'إجمالي القطع',
-                value: '$totalItems',
+                title: 'القطع المباعة',
+                value: '$items',
                 icon: Icons.shopping_cart,
+              ),
+              StatCard(
+                title: 'المدفوع',
+                value:
+                    '${totalPaid.toStringAsFixed(2)} ج',
+                icon: Icons.payments,
               ),
             ],
           ),
         ),
+
+        if (sales.isNotEmpty)
+          Card(
+            margin:
+                const EdgeInsets.symmetric(
+              horizontal: 12,
+            ),
+            child: ListTile(
+              leading:
+                  const Icon(Icons.calculate),
+              title: const Text(
+                'إجمالي الباقي للعملاء',
+              ),
+              trailing: Text(
+                '${totalChange.toStringAsFixed(2)} ج',
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ),
 
         const Divider(),
 
@@ -1436,67 +1837,66 @@ class ReportsPage extends StatelessWidget {
           child: sales.isEmpty
               ? const Center(
                   child: Text(
-                    'لا توجد فواتير حتى الآن',
-                    style: TextStyle(fontSize: 20),
+                    'لا توجد مبيعات حتى الآن',
+                    style: TextStyle(
+                      fontSize: 20,
+                    ),
                   ),
                 )
               : ListView.builder(
-                  padding: const EdgeInsets.all(12),
+                  padding:
+                      const EdgeInsets.all(12),
                   itemCount: sales.length,
-                  itemBuilder: (context, index) {
+                  itemBuilder:
+                      (context, index) {
                     final sale =
-                        sales[sales.length - 1 - index];
+                        sales[
+                            sales.length -
+                                1 -
+                                index];
 
-                    final invoiceId =
+                    final shortId =
                         sale.id.length > 6
                             ? sale.id.substring(
-                                sale.id.length - 6,
+                                sale.id.length -
+                                    6,
                               )
                             : sale.id;
 
                     return Card(
-                      child: ExpansionTile(
-                        leading: const CircleAvatar(
-                          child: Icon(Icons.receipt_long),
+                      child: ListTile(
+                        leading:
+                            const CircleAvatar(
+                          child: Icon(
+                            Icons.receipt,
+                          ),
                         ),
                         title: Text(
-                          'فاتورة #$invoiceId',
-                          style: const TextStyle(
-                            fontWeight: FontWeight.bold,
+                          'فاتورة #$shortId',
+                          style:
+                              const TextStyle(
+                            fontWeight:
+                                FontWeight
+                                    .bold,
                           ),
                         ),
-                        subtitle: Text(
+                        subtitle:
+                            Text(
                           '${sale.date.day}/${sale.date.month}/${sale.date.year}'
+                          ' • ${sale.date.hour.toString().padLeft(2, '0')}:${sale.date.minute.toString().padLeft(2, '0')}'
                           ' • ${sale.items} قطعة',
                         ),
-                        trailing: Text(
-                          money(sale.total),
-                          style: const TextStyle(
-                            fontWeight: FontWeight.bold,
+                        trailing:
+                            Text(
+                          '${sale.total.toStringAsFixed(2)} ج',
+                          style:
+                              const TextStyle(
+                            fontWeight:
+                                FontWeight
+                                    .bold,
+                            fontSize: 16,
                           ),
                         ),
-                        children: [
-                          ListTile(
-                            title: const Text('الإجمالي'),
-                            trailing:
-                                Text(money(sale.total)),
-                          ),
-                          ListTile(
-                            title: const Text('المدفوع'),
-                            trailing:
-                                Text(money(sale.paid)),
-                          ),
-                          ListTile(
-                            title: const Text('الباقي'),
-                            trailing:
-                                Text(money(sale.change)),
-                          ),
-                          ListTile(
-                            title: const Text('الربح'),
-                            trailing:
-                                Text(money(sale.profit)),
-                          ),
-                        ],
                       ),
                     );
                   },
@@ -1513,7 +1913,7 @@ class ReportsPage extends StatelessWidget {
 
 class SettingsPage extends StatelessWidget {
   final bool darkMode;
-  final ValueChanged<bool> onThemeChanged;
+  final VoidCallback onThemeChanged;
 
   const SettingsPage({
     super.key,
@@ -1521,16 +1921,27 @@ class SettingsPage extends StatelessWidget {
     required this.onThemeChanged,
   });
 
-  Future<void> openWhatsApp(BuildContext context) async {
-    final uri =
-        Uri.parse('https://wa.me/201030415839');
+  Future<void> openWhatsApp(
+    BuildContext context,
+  ) async {
+    final uri = Uri.parse(
+      'https://wa.me/201030415839',
+    );
 
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(
-        uri,
-        mode: LaunchMode.externalApplication,
-      );
-    } else {
+    try {
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(
+          uri,
+          mode:
+              LaunchMode.externalApplication,
+        );
+      } else {
+        showMessage(
+          context,
+          'تعذر فتح واتساب',
+        );
+      }
+    } catch (_) {
       showMessage(
         context,
         'تعذر فتح واتساب',
@@ -1538,12 +1949,27 @@ class SettingsPage extends StatelessWidget {
     }
   }
 
-  Future<void> makeCall(BuildContext context) async {
-    final uri = Uri.parse('tel:01012610087');
+  Future<void> makeCall(
+    BuildContext context,
+  ) async {
+    final uri = Uri.parse(
+      'tel:01012610087',
+    );
 
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri);
-    } else {
+    try {
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(
+          uri,
+          mode:
+              LaunchMode.externalApplication,
+        );
+      } else {
+        showMessage(
+          context,
+          'تعذر فتح تطبيق الاتصال',
+        );
+      }
+    } catch (_) {
       showMessage(
         context,
         'تعذر فتح تطبيق الاتصال',
@@ -1563,11 +1989,16 @@ class SettingsPage extends StatelessWidget {
                   ? Icons.dark_mode
                   : Icons.light_mode,
             ),
-            title: const Text('الوضع الليلي'),
-            subtitle:
-                const Text('تغيير مظهر البرنامج'),
+            title: const Text(
+              'الوضع الليلي',
+            ),
+            subtitle: const Text(
+              'تغيير مظهر التطبيق',
+            ),
             value: darkMode,
-            onChanged: onThemeChanged,
+            onChanged: (_) {
+              onThemeChanged();
+            },
           ),
         ),
 
@@ -1585,35 +2016,40 @@ class SettingsPage extends StatelessWidget {
 
         Card(
           child: Padding(
-            padding: const EdgeInsets.all(16),
+            padding:
+                const EdgeInsets.all(16),
             child: Column(
               children: [
                 const Icon(
                   Icons.support_agent,
                   size: 55,
                 ),
-
                 const SizedBox(height: 10),
-
                 const Text(
                   'للدعم والاستفسارات والشكاوى',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     fontSize: 17,
-                    fontWeight: FontWeight.bold,
+                    fontWeight:
+                        FontWeight.bold,
                   ),
                 ),
-
                 const SizedBox(height: 15),
 
                 SizedBox(
                   width: double.infinity,
-                  child: FilledButton.icon(
+                  child:
+                      FilledButton.icon(
                     onPressed: () =>
-                        openWhatsApp(context),
-                    icon: const Icon(Icons.chat),
-                    label:
-                        const Text('واتساب الشكاوى'),
+                        openWhatsApp(
+                      context,
+                    ),
+                    icon: const Icon(
+                      Icons.chat,
+                    ),
+                    label: const Text(
+                      'واتساب الشكاوى',
+                    ),
                   ),
                 ),
 
@@ -1621,12 +2057,16 @@ class SettingsPage extends StatelessWidget {
 
                 SizedBox(
                   width: double.infinity,
-                  child: OutlinedButton.icon(
+                  child:
+                      OutlinedButton.icon(
                     onPressed: () =>
                         makeCall(context),
-                    icon: const Icon(Icons.phone),
-                    label:
-                        const Text('اتصال مباشر'),
+                    icon: const Icon(
+                      Icons.phone,
+                    ),
+                    label: const Text(
+                      'اتصال مباشر',
+                    ),
                   ),
                 ),
 
@@ -1635,7 +2075,8 @@ class SettingsPage extends StatelessWidget {
                 const Text(
                   'واتساب: 01030415839\n'
                   'المكالمات: 01012610087',
-                  textAlign: TextAlign.center,
+                  textAlign:
+                      TextAlign.center,
                 ),
               ],
             ),
@@ -1646,9 +2087,15 @@ class SettingsPage extends StatelessWidget {
 
         const Card(
           child: ListTile(
-            leading: Icon(Icons.info_outline),
-            title: Text('CASHIER PRO'),
-            subtitle: Text('الإصدار V5.0'),
+            leading: Icon(
+              Icons.info_outline,
+            ),
+            title: Text(
+              'CASHIER PRO',
+            ),
+            subtitle: Text(
+              'الإصدار V5.0',
+            ),
           ),
         ),
       ],
@@ -1660,18 +2107,16 @@ class SettingsPage extends StatelessWidget {
 // HELPERS
 // ============================================================
 
-String money(double value) {
-  return '${value.toStringAsFixed(2)} ج';
-}
-
 void showMessage(
   BuildContext context,
   String message,
 ) {
-  ScaffoldMessenger.of(context).showSnackBar(
+  ScaffoldMessenger.of(context)
+      .showSnackBar(
     SnackBar(
       content: Text(message),
-      behavior: SnackBarBehavior.floating,
+      behavior:
+          SnackBarBehavior.floating,
     ),
   );
 }

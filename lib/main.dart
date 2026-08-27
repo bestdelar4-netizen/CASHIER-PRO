@@ -11,22 +11,18 @@ class CashierProApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'Cashier Pro',
+      title: 'Cashier Pro V2',
       theme: ThemeData(
         useMaterial3: true,
         brightness: Brightness.dark,
-        scaffoldBackgroundColor: const Color(0xFF101216),
         colorScheme: ColorScheme.fromSeed(
           seedColor: Colors.blue,
           brightness: Brightness.dark,
         ),
-        inputDecorationTheme: InputDecorationTheme(
-          filled: true,
-          fillColor: const Color(0xFF1A1D23),
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide.none,
-          ),
+        scaffoldBackgroundColor: const Color(0xFF101216),
+        cardTheme: const CardThemeData(
+          elevation: 2,
+          margin: EdgeInsets.zero,
         ),
       ),
       home: const Directionality(
@@ -40,24 +36,50 @@ class CashierProApp extends StatelessWidget {
 class Product {
   String name;
   double price;
-  int quantity;
+  int stock;
 
   Product({
     required this.name,
     required this.price,
-    this.quantity = 0,
+    required this.stock,
   });
+}
+
+class CartItem {
+  final Product product;
+  int quantity;
+
+  CartItem({
+    required this.product,
+    this.quantity = 1,
+  });
+
+  double get total => product.price * quantity;
+}
+
+class SaleItem {
+  final String name;
+  final double price;
+  final int quantity;
+
+  SaleItem({
+    required this.name,
+    required this.price,
+    required this.quantity,
+  });
+
+  double get total => price * quantity;
 }
 
 class Sale {
   final DateTime date;
-  final List<Product> products;
+  final List<SaleItem> items;
   final double total;
   final double paid;
 
   Sale({
     required this.date,
-    required this.products,
+    required this.items,
     required this.total,
     required this.paid,
   });
@@ -76,46 +98,100 @@ class _CashierHomeState extends State<CashierHome> {
   int currentIndex = 0;
 
   final List<Product> products = [
-    Product(name: 'منتج 1', price: 10),
-    Product(name: 'منتج 2', price: 20),
-    Product(name: 'منتج 3', price: 30),
+    Product(name: 'مياه معدنية', price: 10, stock: 50),
+    Product(name: 'عصير', price: 20, stock: 30),
+    Product(name: 'مشروب غازي', price: 25, stock: 25),
+    Product(name: 'شيبسي', price: 15, stock: 40),
   ];
 
+  final List<CartItem> cart = [];
   final List<Sale> sales = [];
 
-  final List<Product> cart = [];
+  String searchText = '';
 
   double get cartTotal {
-    double total = 0;
+    return cart.fold(0, (sum, item) => sum + item.total);
+  }
 
-    for (final product in cart) {
-      total += product.price * product.quantity;
+  int get cartCount {
+    return cart.fold(0, (sum, item) => sum + item.quantity);
+  }
+
+  double get todaySales {
+    final now = DateTime.now();
+
+    return sales
+        .where(
+          (sale) =>
+              sale.date.year == now.year &&
+              sale.date.month == now.month &&
+              sale.date.day == now.day,
+        )
+        .fold(0, (sum, sale) => sum + sale.total);
+  }
+
+  int get todayInvoices {
+    final now = DateTime.now();
+
+    return sales
+        .where(
+          (sale) =>
+              sale.date.year == now.year &&
+              sale.date.month == now.month &&
+              sale.date.day == now.day,
+        )
+        .length;
+  }
+
+  List<Product> get filteredProducts {
+    final query = searchText.trim().toLowerCase();
+
+    if (query.isEmpty) {
+      return products;
     }
 
-    return total;
+    return products.where((product) {
+      return product.name.toLowerCase().contains(query);
+    }).toList();
   }
 
   void addToCart(Product product) {
-    setState(() {
-      final existing = cart.indexWhere(
-        (item) => item.name == product.name,
-      );
+    if (product.stock <= 0) {
+      showMessage('المنتج غير متوفر في المخزون');
+      return;
+    }
 
-      if (existing >= 0) {
-        cart[existing].quantity++;
+    final index = cart.indexWhere(
+      (item) => identical(item.product, product),
+    );
+
+    setState(() {
+      if (index == -1) {
+        cart.add(CartItem(product: product));
       } else {
-        cart.add(
-          Product(
-            name: product.name,
-            price: product.price,
-            quantity: 1,
-          ),
-        );
+        if (cart[index].quantity < product.stock) {
+          cart[index].quantity++;
+        } else {
+          showMessage('لا توجد كمية إضافية في المخزون');
+        }
       }
     });
   }
 
-  void decreaseFromCart(int index) {
+  void increaseCart(int index) {
+    final item = cart[index];
+
+    if (item.quantity >= item.product.stock) {
+      showMessage('الكمية المطلوبة أكبر من المخزون');
+      return;
+    }
+
+    setState(() {
+      item.quantity++;
+    });
+  }
+
+  void decreaseCart(int index) {
     setState(() {
       if (cart[index].quantity > 1) {
         cart[index].quantity--;
@@ -125,48 +201,63 @@ class _CashierHomeState extends State<CashierHome> {
     });
   }
 
-  void increaseFromCart(int index) {
-    setState(() {
-      cart[index].quantity++;
-    });
-  }
-
-  void removeFromCart(int index) {
+  void removeCart(int index) {
     setState(() {
       cart.removeAt(index);
     });
   }
 
-  void showAddProductDialog() {
+  void showMessage(String message) {
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
+  }
+
+  void addProductDialog() {
     final nameController = TextEditingController();
     final priceController = TextEditingController();
+    final stockController = TextEditingController();
 
     showDialog(
       context: context,
       builder: (context) {
         return AlertDialog(
           title: const Text('إضافة منتج'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: nameController,
-                decoration: const InputDecoration(
-                  labelText: 'اسم المنتج',
-                  prefixIcon: Icon(Icons.inventory_2_outlined),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: nameController,
+                  decoration: const InputDecoration(
+                    labelText: 'اسم المنتج',
+                    prefixIcon: Icon(Icons.inventory_2_outlined),
+                  ),
                 ),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: priceController,
-                keyboardType:
-                    const TextInputType.numberWithOptions(decimal: true),
-                decoration: const InputDecoration(
-                  labelText: 'السعر',
-                  prefixIcon: Icon(Icons.attach_money),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: priceController,
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  decoration: const InputDecoration(
+                    labelText: 'السعر',
+                    prefixIcon: Icon(Icons.attach_money),
+                  ),
                 ),
-              ),
-            ],
+                const SizedBox(height: 12),
+                TextField(
+                  controller: stockController,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    labelText: 'الكمية في المخزون',
+                    prefixIcon: Icon(Icons.warehouse_outlined),
+                  ),
+                ),
+              ],
+            ),
           ),
           actions: [
             TextButton(
@@ -179,8 +270,16 @@ class _CashierHomeState extends State<CashierHome> {
                 final price = double.tryParse(
                   priceController.text.trim(),
                 );
+                final stock = int.tryParse(
+                  stockController.text.trim(),
+                );
 
-                if (name.isEmpty || price == null || price < 0) {
+                if (name.isEmpty ||
+                    price == null ||
+                    price < 0 ||
+                    stock == null ||
+                    stock < 0) {
+                  showMessage('أدخل بيانات صحيحة');
                   return;
                 }
 
@@ -189,6 +288,7 @@ class _CashierHomeState extends State<CashierHome> {
                     Product(
                       name: name,
                       price: price,
+                      stock: stock,
                     ),
                   );
                 });
@@ -203,7 +303,7 @@ class _CashierHomeState extends State<CashierHome> {
     );
   }
 
-  void showEditProductDialog(int index) {
+  void editProductDialog(int index) {
     final product = products[index];
 
     final nameController = TextEditingController(
@@ -214,32 +314,45 @@ class _CashierHomeState extends State<CashierHome> {
       text: product.price.toString(),
     );
 
+    final stockController = TextEditingController(
+      text: product.stock.toString(),
+    );
+
     showDialog(
       context: context,
       builder: (context) {
         return AlertDialog(
           title: const Text('تعديل المنتج'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: nameController,
-                decoration: const InputDecoration(
-                  labelText: 'اسم المنتج',
-                  prefixIcon: Icon(Icons.edit),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: nameController,
+                  decoration: const InputDecoration(
+                    labelText: 'اسم المنتج',
+                  ),
                 ),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: priceController,
-                keyboardType:
-                    const TextInputType.numberWithOptions(decimal: true),
-                decoration: const InputDecoration(
-                  labelText: 'السعر',
-                  prefixIcon: Icon(Icons.attach_money),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: priceController,
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  decoration: const InputDecoration(
+                    labelText: 'السعر',
+                  ),
                 ),
-              ),
-            ],
+                const SizedBox(height: 12),
+                TextField(
+                  controller: stockController,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    labelText: 'المخزون',
+                  ),
+                ),
+              ],
+            ),
           ),
           actions: [
             TextButton(
@@ -252,14 +365,23 @@ class _CashierHomeState extends State<CashierHome> {
                 final price = double.tryParse(
                   priceController.text.trim(),
                 );
+                final stock = int.tryParse(
+                  stockController.text.trim(),
+                );
 
-                if (name.isEmpty || price == null || price < 0) {
+                if (name.isEmpty ||
+                    price == null ||
+                    price < 0 ||
+                    stock == null ||
+                    stock < 0) {
+                  showMessage('أدخل بيانات صحيحة');
                   return;
                 }
 
                 setState(() {
                   product.name = name;
                   product.price = price;
+                  product.stock = stock;
                 });
 
                 Navigator.pop(context);
@@ -273,13 +395,15 @@ class _CashierHomeState extends State<CashierHome> {
   }
 
   void deleteProduct(int index) {
+    final product = products[index];
+
     showDialog(
       context: context,
       builder: (context) {
         return AlertDialog(
           title: const Text('حذف المنتج'),
           content: Text(
-            'هل تريد حذف "${products[index].name}"؟',
+            'هل تريد حذف "${product.name}"؟',
           ),
           actions: [
             TextButton(
@@ -292,6 +416,9 @@ class _CashierHomeState extends State<CashierHome> {
               ),
               onPressed: () {
                 setState(() {
+                  cart.removeWhere(
+                    (item) => identical(item.product, product),
+                  );
                   products.removeAt(index);
                 });
 
@@ -307,11 +434,7 @@ class _CashierHomeState extends State<CashierHome> {
 
   void finishSale() {
     if (cart.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('السلة فارغة'),
-        ),
-      );
+      showMessage('السلة فارغة');
       return;
     }
 
@@ -327,18 +450,21 @@ class _CashierHomeState extends State<CashierHome> {
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              const Text('إجمالي الفاتورة'),
+              const SizedBox(height: 4),
               Text(
-                'الإجمالي: ${cartTotal.toStringAsFixed(2)} جنيه',
+                '${cartTotal.toStringAsFixed(2)} جنيه',
                 style: const TextStyle(
-                  fontSize: 18,
+                  fontSize: 25,
                   fontWeight: FontWeight.bold,
                 ),
               ),
               const SizedBox(height: 15),
               TextField(
                 controller: paidController,
-                keyboardType:
-                    const TextInputType.numberWithOptions(decimal: true),
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
                 decoration: const InputDecoration(
                   labelText: 'المبلغ المدفوع',
                   prefixIcon: Icon(Icons.payments_outlined),
@@ -358,32 +484,41 @@ class _CashierHomeState extends State<CashierHome> {
                 );
 
                 if (paid == null || paid < cartTotal) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text(
-                        'المبلغ المدفوع أقل من الإجمالي',
-                      ),
-                    ),
-                  );
+                  showMessage('المبلغ المدفوع غير كافٍ');
                   return;
                 }
 
-                final saleProducts = cart
+                for (final item in cart) {
+                  if (item.quantity > item.product.stock) {
+                    showMessage(
+                      'المخزون غير كافٍ للمنتج ${item.product.name}',
+                    );
+                    return;
+                  }
+                }
+
+                final items = cart
                     .map(
-                      (item) => Product(
-                        name: item.name,
-                        price: item.price,
+                      (item) => SaleItem(
+                        name: item.product.name,
+                        price: item.product.price,
                         quantity: item.quantity,
                       ),
                     )
                     .toList();
 
+                final total = cartTotal;
+
                 setState(() {
+                  for (final item in cart) {
+                    item.product.stock -= item.quantity;
+                  }
+
                   sales.add(
                     Sale(
                       date: DateTime.now(),
-                      products: saleProducts,
-                      total: cartTotal,
+                      items: items,
+                      total: total,
                       paid: paid,
                     ),
                   );
@@ -393,16 +528,12 @@ class _CashierHomeState extends State<CashierHome> {
 
                 Navigator.pop(context);
 
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(
-                      'تمت عملية البيع بنجاح - الباقي: '
-                      '${(paid - cartTotal).toStringAsFixed(2)} جنيه',
-                    ),
-                  ),
+                showMessage(
+                  'تم البيع بنجاح - الباقي '
+                  '${(paid - total).toStringAsFixed(2)} جنيه',
                 );
               },
-              child: const Text('إتمام البيع'),
+              child: const Text('تأكيد البيع'),
             ),
           ],
         );
@@ -410,18 +541,168 @@ class _CashierHomeState extends State<CashierHome> {
     );
   }
 
-  Widget buildHome() {
+  Widget productCard(Product product) {
+    final index = products.indexOf(product);
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          children: [
+            const Icon(
+              Icons.inventory_2,
+              size: 40,
+            ),
+            const SizedBox(height: 7),
+            Text(
+              product.name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 17,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              '${product.price.toStringAsFixed(2)} جنيه',
+            ),
+            const SizedBox(height: 3),
+            Text(
+              'المخزون: ${product.stock}',
+              style: TextStyle(
+                color: product.stock == 0
+                    ? Colors.red
+                    : product.stock <= 5
+                        ? Colors.orange
+                        : null,
+              ),
+            ),
+            const Spacer(),
+            Row(
+              children: [
+                Expanded(
+                  child: FilledButton(
+                    onPressed: product.stock > 0
+                        ? () => addToCart(product)
+                        : null,
+                    child: const Text('إضافة'),
+                  ),
+                ),
+                PopupMenuButton<String>(
+                  onSelected: (value) {
+                    if (value == 'edit') {
+                      editProductDialog(index);
+                    } else if (value == 'delete') {
+                      deleteProduct(index);
+                    }
+                  },
+                  itemBuilder: (context) => const [
+                    PopupMenuItem(
+                      value: 'edit',
+                      child: Text('تعديل'),
+                    ),
+                    PopupMenuItem(
+                      value: 'delete',
+                      child: Text('حذف'),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget buildCashier() {
     return Column(
       children: [
-        buildHeader(),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+          child: Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  'Cashier Pro',
+                  style: TextStyle(
+                    fontSize: 27,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+              Badge(
+                isLabelVisible: cartCount > 0,
+                label: Text('$cartCount'),
+                child: IconButton(
+                  onPressed: () {},
+                  icon: const Icon(Icons.shopping_cart),
+                ),
+              ),
+              const SizedBox(width: 5),
+              FilledButton.icon(
+                onPressed: addProductDialog,
+                icon: const Icon(Icons.add),
+                label: const Text('منتج'),
+              ),
+            ],
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: 16,
+            vertical: 8,
+          ),
+          child: TextField(
+            onChanged: (value) {
+              setState(() {
+                searchText = value;
+              });
+            },
+            decoration: InputDecoration(
+              hintText: 'ابحث عن منتج...',
+              prefixIcon: const Icon(Icons.search),
+              suffixIcon: searchText.isNotEmpty
+                  ? IconButton(
+                      onPressed: () {
+                        setState(() {
+                          searchText = '';
+                        });
+                      },
+                      icon: const Icon(Icons.clear),
+                    )
+                  : null,
+            ),
+          ),
+        ),
         Expanded(
           child: Row(
             children: [
               Expanded(
                 flex: 3,
-                child: buildProducts(),
+                child: filteredProducts.isEmpty
+                    ? const Center(
+                        child: Text('لا توجد منتجات'),
+                      )
+                    : GridView.builder(
+                        padding: const EdgeInsets.all(12),
+                        gridDelegate:
+                            const SliverGridDelegateWithMaxCrossAxisExtent(
+                          maxCrossAxisExtent: 220,
+                          mainAxisExtent: 190,
+                          crossAxisSpacing: 12,
+                          mainAxisSpacing: 12,
+                        ),
+                        itemCount: filteredProducts.length,
+                        itemBuilder: (context, index) {
+                          return productCard(
+                            filteredProducts[index],
+                          );
+                        },
+                      ),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 10),
               Expanded(
                 flex: 2,
                 child: buildCart(),
@@ -433,135 +714,35 @@ class _CashierHomeState extends State<CashierHome> {
     );
   }
 
-  Widget buildHeader() {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      child: Row(
-        children: [
-          const Expanded(
-            child: Text(
-              'Cashier Pro',
-              style: TextStyle(
-                fontSize: 26,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ),
-          FilledButton.icon(
-            onPressed: showAddProductDialog,
-            icon: const Icon(Icons.add),
-            label: const Text('إضافة منتج'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget buildProducts() {
-    if (products.isEmpty) {
-      return const Center(
-        child: Text(
-          'لا توجد منتجات',
-          style: TextStyle(fontSize: 18),
-        ),
-      );
-    }
-
-    return GridView.builder(
-      padding: const EdgeInsets.all(12),
-      gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-        maxCrossAxisExtent: 220,
-        mainAxisExtent: 170,
-        crossAxisSpacing: 12,
-        mainAxisSpacing: 12,
-      ),
-      itemCount: products.length,
-      itemBuilder: (context, index) {
-        final product = products[index];
-
-        return Card(
-          child: Padding(
-            padding: const EdgeInsets.all(12),
-            child: Column(
-              children: [
-                const Icon(
-                  Icons.inventory_2,
-                  size: 42,
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  product.name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 17,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 5),
-                Text(
-                  '${product.price.toStringAsFixed(2)} جنيه',
-                  style: const TextStyle(
-                    fontSize: 16,
-                  ),
-                ),
-                const Spacer(),
-                Row(
-                  children: [
-                    Expanded(
-                      child: FilledButton(
-                        onPressed: () => addToCart(product),
-                        child: const Text('إضافة'),
-                      ),
-                    ),
-                    const SizedBox(width: 5),
-                    PopupMenuButton<String>(
-                      onSelected: (value) {
-                        if (value == 'edit') {
-                          showEditProductDialog(index);
-                        } else if (value == 'delete') {
-                          deleteProduct(index);
-                        }
-                      },
-                      itemBuilder: (context) => const [
-                        PopupMenuItem(
-                          value: 'edit',
-                          child: Text('تعديل'),
-                        ),
-                        PopupMenuItem(
-                          value: 'delete',
-                          child: Text('حذف'),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-
   Widget buildCart() {
     return Card(
-      margin: const EdgeInsets.all(12),
+      margin: const EdgeInsets.fromLTRB(0, 12, 12, 12),
       child: Column(
         children: [
-          const Padding(
-            padding: EdgeInsets.all(16),
+          Padding(
+            padding: const EdgeInsets.all(15),
             child: Row(
               children: [
-                Icon(Icons.shopping_cart),
-                SizedBox(width: 8),
-                Text(
-                  'السلة',
-                  style: TextStyle(
-                    fontSize: 21,
-                    fontWeight: FontWeight.bold,
+                const Icon(Icons.shopping_cart),
+                const SizedBox(width: 8),
+                const Expanded(
+                  child: Text(
+                    'السلة',
+                    style: TextStyle(
+                      fontSize: 21,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ),
+                if (cart.isNotEmpty)
+                  TextButton(
+                    onPressed: () {
+                      setState(() {
+                        cart.clear();
+                      });
+                    },
+                    child: const Text('مسح'),
+                  ),
               ],
             ),
           ),
@@ -577,17 +758,21 @@ class _CashierHomeState extends State<CashierHome> {
                       final item = cart[index];
 
                       return ListTile(
-                        title: Text(item.name),
+                        title: Text(
+                          item.product.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                         subtitle: Text(
-                          '${item.price.toStringAsFixed(2)} × '
-                          '${item.quantity}',
+                          '${item.product.price.toStringAsFixed(2)} × '
+                          '${item.quantity} = '
+                          '${item.total.toStringAsFixed(2)}',
                         ),
                         trailing: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             IconButton(
-                              onPressed: () =>
-                                  decreaseFromCart(index),
+                              onPressed: () => decreaseCart(index),
                               icon: const Icon(
                                 Icons.remove_circle_outline,
                               ),
@@ -599,18 +784,9 @@ class _CashierHomeState extends State<CashierHome> {
                               ),
                             ),
                             IconButton(
-                              onPressed: () =>
-                                  increaseFromCart(index),
+                              onPressed: () => increaseCart(index),
                               icon: const Icon(
                                 Icons.add_circle_outline,
-                              ),
-                            ),
-                            IconButton(
-                              onPressed: () =>
-                                  removeFromCart(index),
-                              icon: const Icon(
-                                Icons.delete_outline,
-                                color: Colors.red,
                               ),
                             ),
                           ],
@@ -621,7 +797,7 @@ class _CashierHomeState extends State<CashierHome> {
           ),
           const Divider(height: 1),
           Padding(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(15),
             child: Column(
               children: [
                 Row(
@@ -630,7 +806,7 @@ class _CashierHomeState extends State<CashierHome> {
                       child: Text(
                         'الإجمالي',
                         style: TextStyle(
-                          fontSize: 19,
+                          fontSize: 18,
                           fontWeight: FontWeight.bold,
                         ),
                       ),
@@ -665,77 +841,174 @@ class _CashierHomeState extends State<CashierHome> {
   }
 
   Widget buildSales() {
-    if (sales.isEmpty) {
-      return const Center(
-        child: Text(
-          'لا توجد مبيعات حتى الآن',
-          style: TextStyle(fontSize: 20),
-        ),
-      );
-    }
-
-    double totalSales = 0;
-
-    for (final sale in sales) {
-      totalSales += sale.total;
-    }
-
     return Column(
       children: [
         Padding(
           padding: const EdgeInsets.all(16),
-          child: Card(
-            child: ListTile(
-              leading: const Icon(
-                Icons.analytics_outlined,
-                size: 35,
-              ),
-              title: const Text('إجمالي المبيعات'),
-              subtitle: Text(
-                '${totalSales.toStringAsFixed(2)} جنيه',
-                style: const TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
+          child: Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  'المبيعات',
+                  style: TextStyle(
+                    fontSize: 28,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ),
-            ),
-          ),
-        ),
-        Expanded(
-          child: ListView.builder(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            itemCount: sales.length,
-            itemBuilder: (context, index) {
-              final sale = sales[sales.length - 1 - index];
-
-              return Card(
-                child: ListTile(
-                  leading: const CircleAvatar(
-                    child: Icon(Icons.receipt_long),
-                  ),
-                  title: Text(
-                    'فاتورة #${sales.length - index}',
-                  ),
-                  subtitle: Text(
-                    '${sale.date.day}/'
-                    '${sale.date.month}/'
-                    '${sale.date.year} - '
-                    '${sale.date.hour}:'
-                    '${sale.date.minute.toString().padLeft(2, '0')}',
-                  ),
-                  trailing: Text(
-                    '${sale.total.toStringAsFixed(2)} جنيه',
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Text(
+                    '${todaySales.toStringAsFixed(2)} جنيه اليوم',
                     style: const TextStyle(
                       fontWeight: FontWeight.bold,
                     ),
                   ),
                 ),
-              );
-            },
+              ),
+            ],
           ),
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Row(
+            children: [
+              Expanded(
+                child: statCard(
+                  'مبيعات اليوم',
+                  '${todaySales.toStringAsFixed(2)}',
+                  Icons.payments,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: statCard(
+                  'الفواتير',
+                  '$todayInvoices',
+                  Icons.receipt_long,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: statCard(
+                  'كل المبيعات',
+                  '${sales.fold<double>(
+                    0,
+                    (sum, sale) => sum + sale.total,
+                  ).toStringAsFixed(2)}',
+                  Icons.bar_chart,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+        Expanded(
+          child: sales.isEmpty
+              ? const Center(
+                  child: Text(
+                    'لا توجد فواتير حتى الآن',
+                    style: TextStyle(fontSize: 18),
+                  ),
+                )
+              : ListView.builder(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: sales.length,
+                  itemBuilder: (context, index) {
+                    final sale =
+                        sales[sales.length - 1 - index];
+
+                    return Card(
+                      child: ExpansionTile(
+                        leading: const CircleAvatar(
+                          child: Icon(Icons.receipt_long),
+                        ),
+                        title: Text(
+                          'فاتورة #${sales.length - index}',
+                        ),
+                        subtitle: Text(
+                          '${formatDate(sale.date)} • '
+                          '${sale.total.toStringAsFixed(2)} جنيه',
+                        ),
+                        children: [
+                          ...sale.items.map(
+                            (item) => ListTile(
+                              title: Text(item.name),
+                              subtitle: Text(
+                                '${item.price.toStringAsFixed(2)} × '
+                                '${item.quantity}',
+                              ),
+                              trailing: Text(
+                                '${item.total.toStringAsFixed(2)} جنيه',
+                              ),
+                            ),
+                          ),
+                          Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Row(
+                              children: [
+                                const Expanded(
+                                  child: Text('المدفوع'),
+                                ),
+                                Text(
+                                  '${sale.paid.toStringAsFixed(2)} جنيه',
+                                ),
+                                const SizedBox(width: 20),
+                                const Text('الباقي'),
+                                const SizedBox(width: 5),
+                                Text(
+                                  '${sale.change.toStringAsFixed(2)} جنيه',
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
         ),
       ],
     );
+  }
+
+  Widget statCard(
+    String title,
+    String value,
+    IconData icon,
+  ) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(15),
+        child: Column(
+          children: [
+            Icon(icon, size: 30),
+            const SizedBox(height: 8),
+            Text(
+              title,
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 5),
+            Text(
+              value,
+              style: const TextStyle(
+                fontSize: 19,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String formatDate(DateTime date) {
+    final hour = date.hour.toString().padLeft(2, '0');
+    final minute = date.minute.toString().padLeft(2, '0');
+
+    return '${date.day}/${date.month}/${date.year} '
+        '$hour:$minute';
   }
 
   Widget buildSettings() {
@@ -756,25 +1029,33 @@ class _CashierHomeState extends State<CashierHome> {
             title: const Text('اسم المتجر'),
             subtitle: const Text('Cashier Pro'),
             trailing: const Icon(Icons.edit),
-            onTap: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text(
-                    'يمكن تعديل اسم المتجر من الكود حاليًا',
-                  ),
-                ),
-              );
-            },
+          ),
+        ),
+        Card(
+          child: ListTile(
+            leading: const Icon(Icons.inventory_2),
+            title: const Text('عدد المنتجات'),
+            trailing: Text('${products.length}'),
+          ),
+        ),
+        Card(
+          child: ListTile(
+            leading: const Icon(Icons.receipt_long),
+            title: const Text('عدد الفواتير'),
+            trailing: Text('${sales.length}'),
           ),
         ),
         Card(
           child: ListTile(
             leading: const Icon(Icons.info_outline),
-            title: const Text('Cashier Pro V1'),
-            subtitle: const Text(
-              'نسخة أولية قابلة للتطوير',
-            ),
+            title: const Text('الإصدار'),
+            subtitle: const Text('Cashier Pro V2'),
           ),
+        ),
+        const SizedBox(height: 20),
+        const Text(
+          'ملاحظة: البيانات الحالية مؤقتة، وسيتم إضافة التخزين الدائم في V3.',
+          style: TextStyle(color: Colors.white70),
         ),
       ],
     );
@@ -784,18 +1065,19 @@ class _CashierHomeState extends State<CashierHome> {
   Widget build(BuildContext context) {
     Widget body;
 
-    if (currentIndex == 0) {
-      body = buildHome();
-    } else if (currentIndex == 1) {
-      body = buildSales();
-    } else {
-      body = buildSettings();
+    switch (currentIndex) {
+      case 1:
+        body = buildSales();
+        break;
+      case 2:
+        body = buildSettings();
+        break;
+      default:
+        body = buildCashier();
     }
 
     return Scaffold(
-      body: SafeArea(
-        child: body,
-      ),
+      body: SafeArea(child: body),
       bottomNavigationBar: NavigationBar(
         selectedIndex: currentIndex,
         onDestinationSelected: (index) {

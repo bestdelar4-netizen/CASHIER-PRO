@@ -1,10 +1,9 @@
 import 'dart:convert';
-
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-void main() async {
+void main() {
   WidgetsFlutterBinding.ensureInitialized();
   runApp(const CashierPro());
 }
@@ -21,13 +20,20 @@ class CashierPro extends StatefulWidget {
 }
 
 class _CashierProState extends State<CashierPro> {
-  bool darkMode = false;
+  ThemeMode themeMode = ThemeMode.light;
+
+  void changeTheme(bool dark) {
+    setState(() {
+      themeMode = dark ? ThemeMode.dark : ThemeMode.light;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'CASHIER PRO',
+      themeMode: themeMode,
       theme: ThemeData(
         useMaterial3: true,
         colorSchemeSeed: Colors.indigo,
@@ -38,14 +44,9 @@ class _CashierProState extends State<CashierPro> {
         colorSchemeSeed: Colors.indigo,
         brightness: Brightness.dark,
       ),
-      themeMode: darkMode ? ThemeMode.dark : ThemeMode.light,
       home: HomeScreen(
-        darkMode: darkMode,
-        onThemeChanged: (value) {
-          setState(() {
-            darkMode = value;
-          });
-        },
+        darkMode: themeMode == ThemeMode.dark,
+        onThemeChanged: changeTheme,
       ),
     );
   }
@@ -61,6 +62,7 @@ class Product {
   double buyPrice;
   double sellPrice;
   int quantity;
+  int lowStock;
 
   Product({
     required this.id,
@@ -68,27 +70,28 @@ class Product {
     required this.buyPrice,
     required this.sellPrice,
     required this.quantity,
+    this.lowStock = 5,
   });
 
   double get profit => sellPrice - buyPrice;
 
-  Map<String, dynamic> toJson() {
-    return {
-      'id': id,
-      'name': name,
-      'buyPrice': buyPrice,
-      'sellPrice': sellPrice,
-      'quantity': quantity,
-    };
-  }
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'name': name,
+        'buyPrice': buyPrice,
+        'sellPrice': sellPrice,
+        'quantity': quantity,
+        'lowStock': lowStock,
+      };
 
   factory Product.fromJson(Map<String, dynamic> json) {
     return Product(
       id: json['id'].toString(),
       name: json['name']?.toString() ?? '',
-      buyPrice: (json['buyPrice'] ?? json['price'] ?? 0 as num).toDouble(),
-      sellPrice: (json['sellPrice'] ?? json['price'] ?? 0 as num).toDouble(),
-      quantity: (json['quantity'] ?? 0 as num).toInt(),
+      buyPrice: (json['buyPrice'] ?? json['price'] ?? 0).toDouble(),
+      sellPrice: (json['sellPrice'] ?? json['price'] ?? 0).toDouble(),
+      quantity: (json['quantity'] ?? 0).toInt(),
+      lowStock: (json['lowStock'] ?? 5).toInt(),
     );
   }
 }
@@ -103,7 +106,6 @@ class CartItem {
   });
 
   double get total => product.sellPrice * quantity;
-
   double get profit => product.profit * quantity;
 }
 
@@ -126,27 +128,25 @@ class Sale {
     required this.items,
   });
 
-  Map<String, dynamic> toJson() {
-    return {
-      'id': id,
-      'date': date.toIso8601String(),
-      'total': total,
-      'paid': paid,
-      'change': change,
-      'profit': profit,
-      'items': items,
-    };
-  }
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'date': date.toIso8601String(),
+        'total': total,
+        'paid': paid,
+        'change': change,
+        'profit': profit,
+        'items': items,
+      };
 
   factory Sale.fromJson(Map<String, dynamic> json) {
     return Sale(
       id: json['id'].toString(),
       date: DateTime.parse(json['date'].toString()),
-      total: (json['total'] as num).toDouble(),
-      paid: (json['paid'] as num).toDouble(),
-      change: (json['change'] as num).toDouble(),
-      profit: (json['profit'] ?? 0 as num).toDouble(),
-      items: (json['items'] ?? 0 as num).toInt(),
+      total: (json['total'] ?? 0).toDouble(),
+      paid: (json['paid'] ?? 0).toDouble(),
+      change: (json['change'] ?? 0).toDouble(),
+      profit: (json['profit'] ?? 0).toDouble(),
+      items: (json['items'] ?? 0).toInt(),
     );
   }
 }
@@ -187,33 +187,39 @@ class _HomeScreenState extends State<HomeScreen> {
     final prefs = await SharedPreferences.getInstance();
 
     try {
-      final productsData = prefs.getString('products_v4');
-      final salesData = prefs.getString('sales_v4');
+      final productsData = prefs.getString('products_v5');
 
       if (productsData != null) {
-        final decoded = jsonDecode(productsData);
+        final decoded = jsonDecode(productsData) as List;
+        products = decoded
+            .map((e) => Product.fromJson(Map<String, dynamic>.from(e)))
+            .toList();
+      } else {
+        // قراءة بيانات النسخة القديمة إن وجدت
+        final oldData = prefs.getString('products');
 
-        if (decoded is List) {
+        if (oldData != null) {
+          final decoded = jsonDecode(oldData) as List;
           products = decoded
-              .map(
-                (item) => Product.fromJson(
-                  Map<String, dynamic>.from(item),
-                ),
-              )
+              .map((e) => Product.fromJson(Map<String, dynamic>.from(e)))
               .toList();
         }
       }
 
-      if (salesData != null) {
-        final decoded = jsonDecode(salesData);
+      final salesData = prefs.getString('sales_v5');
 
-        if (decoded is List) {
+      if (salesData != null) {
+        final decoded = jsonDecode(salesData) as List;
+        sales = decoded
+            .map((e) => Sale.fromJson(Map<String, dynamic>.from(e)))
+            .toList();
+      } else {
+        final oldSales = prefs.getString('sales');
+
+        if (oldSales != null) {
+          final decoded = jsonDecode(oldSales) as List;
           sales = decoded
-              .map(
-                (item) => Sale.fromJson(
-                  Map<String, dynamic>.from(item),
-                ),
-              )
+              .map((e) => Sale.fromJson(Map<String, dynamic>.from(e)))
               .toList();
         }
       }
@@ -222,29 +228,33 @@ class _HomeScreenState extends State<HomeScreen> {
       sales = [];
     }
 
-    if (!mounted) return;
-
-    setState(() {
-      loading = false;
-    });
+    if (mounted) {
+      setState(() {
+        loading = false;
+      });
+    }
   }
 
   Future<void> saveData() async {
     final prefs = await SharedPreferences.getInstance();
 
     await prefs.setString(
-      'products_v4',
-      jsonEncode(
-        products.map((product) => product.toJson()).toList(),
-      ),
+      'products_v5',
+      jsonEncode(products.map((p) => p.toJson()).toList()),
     );
 
     await prefs.setString(
-      'sales_v4',
-      jsonEncode(
-        sales.map((sale) => sale.toJson()).toList(),
-      ),
+      'sales_v5',
+      jsonEncode(sales.map((s) => s.toJson()).toList()),
     );
+  }
+
+  double get totalSales {
+    return sales.fold(0, (sum, sale) => sum + sale.total);
+  }
+
+  double get totalProfit {
+    return sales.fold(0, (sum, sale) => sum + sale.profit);
   }
 
   double get todaySales {
@@ -252,12 +262,12 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return sales
         .where(
-          (sale) =>
-              sale.date.year == now.year &&
-              sale.date.month == now.month &&
-              sale.date.day == now.day,
+          (s) =>
+              s.date.year == now.year &&
+              s.date.month == now.month &&
+              s.date.day == now.day,
         )
-        .fold(0.0, (sum, sale) => sum + sale.total);
+        .fold(0, (sum, sale) => sum + sale.total);
   }
 
   double get todayProfit {
@@ -265,44 +275,29 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return sales
         .where(
-          (sale) =>
-              sale.date.year == now.year &&
-              sale.date.month == now.month &&
-              sale.date.day == now.day,
+          (s) =>
+              s.date.year == now.year &&
+              s.date.month == now.month &&
+              s.date.day == now.day,
         )
-        .fold(0.0, (sum, sale) => sum + sale.profit);
+        .fold(0, (sum, sale) => sum + sale.profit);
   }
 
   int get todayInvoices {
     final now = DateTime.now();
 
     return sales.where(
-      (sale) =>
-          sale.date.year == now.year &&
-          sale.date.month == now.month &&
-          sale.date.day == now.day,
+      (s) =>
+          s.date.year == now.year &&
+          s.date.month == now.month &&
+          s.date.day == now.day,
     ).length;
-  }
-
-  double get totalSales {
-    return sales.fold(
-      0.0,
-      (sum, sale) => sum + sale.total,
-    );
-  }
-
-  double get totalProfit {
-    return sales.fold(
-      0.0,
-      (sum, sale) => sum + sale.profit,
-    );
   }
 
   void addProduct(Product product) {
     setState(() {
       products.add(product);
     });
-
     saveData();
   }
 
@@ -313,11 +308,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void deleteProduct(Product product) {
     setState(() {
-      products.removeWhere(
-        (item) => item.id == product.id,
-      );
+      products.removeWhere((p) => p.id == product.id);
     });
-
     saveData();
   }
 
@@ -325,8 +317,12 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() {
       sales.add(sale);
     });
-
     saveData();
+  }
+
+  Future<void> saveAfterStockChange() async {
+    await saveData();
+    if (mounted) setState(() {});
   }
 
   @override
@@ -351,7 +347,7 @@ class _HomeScreenState extends State<HomeScreen> {
       CashierPage(
         products: products,
         onSaleComplete: completeSale,
-        onStockChanged: saveData,
+        onStockChanged: saveAfterStockChange,
       ),
       ProductsPage(
         products: products,
@@ -452,9 +448,8 @@ class DashboardPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final lowStock = products
-        .where((product) => product.quantity <= 5)
-        .toList();
+    final lowStock =
+        products.where((p) => p.quantity <= p.lowStock).toList();
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
@@ -471,40 +466,25 @@ class DashboardPage extends StatelessWidget {
             ),
           ),
 
-          const SizedBox(height: 6),
-
-          const Align(
-            alignment: Alignment.centerRight,
-            child: Text(
-              'نظام إدارة المبيعات والمخزون',
-              style: TextStyle(fontSize: 15),
-            ),
-          ),
-
           const SizedBox(height: 20),
 
           GridView.count(
             crossAxisCount:
-                MediaQuery.of(context).size.width >= 800
-                    ? 4
-                    : 2,
+                MediaQuery.of(context).size.width >= 800 ? 4 : 2,
             shrinkWrap: true,
-            physics:
-                const NeverScrollableScrollPhysics(),
+            physics: const NeverScrollableScrollPhysics(),
             crossAxisSpacing: 12,
             mainAxisSpacing: 12,
-            childAspectRatio: 1.45,
+            childAspectRatio: 1.35,
             children: [
               StatCard(
                 title: 'مبيعات اليوم',
-                value:
-                    '${todaySales.toStringAsFixed(2)} ج',
+                value: money(todaySales),
                 icon: Icons.payments,
               ),
               StatCard(
                 title: 'أرباح اليوم',
-                value:
-                    '${todayProfit.toStringAsFixed(2)} ج',
+                value: money(todayProfit),
                 icon: Icons.trending_up,
               ),
               StatCard(
@@ -515,12 +495,12 @@ class DashboardPage extends StatelessWidget {
               StatCard(
                 title: 'المنتجات',
                 value: '${products.length}',
-                icon: Icons.inventory_2,
+                icon: Icons.inventory,
               ),
             ],
           ),
 
-          const SizedBox(height: 18),
+          const SizedBox(height: 15),
 
           Card(
             child: ListTile(
@@ -531,13 +511,11 @@ class DashboardPage extends StatelessWidget {
               ),
               title: const Text(
                 'حالة المخزون',
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                ),
+                style: TextStyle(fontWeight: FontWeight.bold),
               ),
               subtitle: Text(
                 lowStock.isEmpty
-                    ? 'المخزون جيد حاليًا'
+                    ? 'المخزون جيد ولا توجد منتجات منخفضة'
                     : '${lowStock.length} منتج منخفض المخزون',
               ),
             ),
@@ -546,38 +524,40 @@ class DashboardPage extends StatelessWidget {
           const SizedBox(height: 12),
 
           Card(
-            child: ListTile(
-              leading: const Icon(
-                Icons.analytics_outlined,
-              ),
-              title: const Text(
-                'إجمالي المبيعات',
-              ),
-              trailing: Text(
-                '${totalSales.toStringAsFixed(2)} ج',
-                style: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                ),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                children: [
+                  const Text(
+                    'ملخص المبيعات',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 15),
+                  summaryRow('إجمالي المبيعات', totalSales),
+                  summaryRow('إجمالي الأرباح', totalProfit),
+                ],
               ),
             ),
           ),
+        ],
+      ),
+    );
+  }
 
-          Card(
-            child: ListTile(
-              leading: const Icon(
-                Icons.account_balance_wallet_outlined,
-              ),
-              title: const Text(
-                'إجمالي الأرباح',
-              ),
-              trailing: Text(
-                '${totalProfit.toStringAsFixed(2)} ج',
-                style: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
+  Widget summaryRow(String title, double value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 7),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(title),
+          Text(
+            money(value),
+            style: const TextStyle(
+              fontWeight: FontWeight.bold,
             ),
           ),
         ],
@@ -608,15 +588,13 @@ class StatCard extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.all(14),
         child: Column(
-          mainAxisAlignment:
-              MainAxisAlignment.center,
-          crossAxisAlignment:
-              CrossAxisAlignment.end,
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.end,
           children: [
             Icon(icon, size: 30),
             const SizedBox(height: 8),
             Text(title),
-            const SizedBox(height: 5),
+            const SizedBox(height: 4),
             Text(
               value,
               style: const TextStyle(
@@ -638,7 +616,7 @@ class StatCard extends StatelessWidget {
 class CashierPage extends StatefulWidget {
   final List<Product> products;
   final Function(Sale) onSaleComplete;
-  final VoidCallback onStockChanged;
+  final Future<void> Function() onStockChanged;
 
   const CashierPage({
     super.key,
@@ -648,28 +626,18 @@ class CashierPage extends StatefulWidget {
   });
 
   @override
-  State<CashierPage> createState() =>
-      _CashierPageState();
+  State<CashierPage> createState() => _CashierPageState();
 }
 
 class _CashierPageState extends State<CashierPage> {
   final List<CartItem> cart = [];
-
   String search = '';
 
-  double get total {
-    return cart.fold(
-      0.0,
-      (sum, item) => sum + item.total,
-    );
-  }
+  double get total =>
+      cart.fold(0, (sum, item) => sum + item.total);
 
-  double get profit {
-    return cart.fold(
-      0.0,
-      (sum, item) => sum + item.profit,
-    );
-  }
+  double get profit =>
+      cart.fold(0, (sum, item) => sum + item.profit);
 
   List<Product> get filteredProducts {
     final query = search.trim().toLowerCase();
@@ -680,36 +648,34 @@ class _CashierPageState extends State<CashierPage> {
 
     return widget.products
         .where(
-          (product) =>
-              product.name.toLowerCase().contains(query),
+          (p) => p.name.toLowerCase().contains(query),
         )
         .toList();
   }
 
   void addToCart(Product product) {
     if (product.quantity <= 0) {
-      showMessage(
-        context,
-        'المنتج غير متوفر في المخزون',
-      );
+      showMessage(context, 'المنتج غير متوفر');
       return;
     }
 
-    final index = cart.indexWhere(
-      (item) => item.product.id == product.id,
-    );
+    CartItem? existing;
 
-    if (index >= 0) {
-      if (cart[index].quantity >= product.quantity) {
-        showMessage(
-          context,
-          'لا توجد كمية إضافية',
-        );
+    for (final item in cart) {
+      if (item.product.id == product.id) {
+        existing = item;
+        break;
+      }
+    }
+
+    if (existing != null) {
+      if (existing.quantity >= product.quantity) {
+        showMessage(context, 'الكمية المطلوبة غير متوفرة');
         return;
       }
 
       setState(() {
-        cart[index].quantity++;
+        existing!.quantity++;
       });
     } else {
       setState(() {
@@ -723,12 +689,9 @@ class _CashierPageState extends State<CashierPage> {
     }
   }
 
-  void increaseItem(CartItem item) {
+  void increase(CartItem item) {
     if (item.quantity >= item.product.quantity) {
-      showMessage(
-        context,
-        'الكمية المطلوبة أكبر من المخزون',
-      );
+      showMessage(context, 'لا توجد كمية إضافية');
       return;
     }
 
@@ -737,25 +700,19 @@ class _CashierPageState extends State<CashierPage> {
     });
   }
 
-  void decreaseItem(CartItem item) {
-    if (item.quantity <= 1) {
-      setState(() {
-        cart.remove(item);
-      });
-      return;
-    }
-
+  void decrease(CartItem item) {
     setState(() {
-      item.quantity--;
+      if (item.quantity > 1) {
+        item.quantity--;
+      } else {
+        cart.remove(item);
+      }
     });
   }
 
   Future<void> checkout() async {
     if (cart.isEmpty) {
-      showMessage(
-        context,
-        'السلة فارغة',
-      );
+      showMessage(context, 'السلة فارغة');
       return;
     }
 
@@ -768,33 +725,41 @@ class _CashierPageState extends State<CashierPage> {
       builder: (context) {
         return AlertDialog(
           title: const Text('إتمام البيع'),
-          content: TextField(
-            controller: paidController,
-            autofocus: true,
-            keyboardType:
-                const TextInputType.numberWithOptions(
-              decimal: true,
-            ),
-            decoration: const InputDecoration(
-              labelText: 'المبلغ المدفوع',
-              suffixText: 'ج',
-              border: OutlineInputBorder(),
-            ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'الإجمالي: ${money(total)}',
+                style: const TextStyle(
+                  fontSize: 19,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 15),
+              TextField(
+                controller: paidController,
+                autofocus: true,
+                keyboardType:
+                    const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+                decoration: const InputDecoration(
+                  labelText: 'المبلغ المدفوع',
+                  suffixText: 'ج',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ],
           ),
           actions: [
             TextButton(
-              onPressed: () {
-                Navigator.pop(context);
-              },
+              onPressed: () => Navigator.pop(context),
               child: const Text('إلغاء'),
             ),
             FilledButton(
               onPressed: () {
                 final value =
-                    double.tryParse(
-                          paidController.text,
-                        ) ??
-                        0;
+                    double.tryParse(paidController.text) ?? 0;
 
                 Navigator.pop(context, value);
               },
@@ -810,18 +775,21 @@ class _CashierPageState extends State<CashierPage> {
     if (paid == null) return;
 
     if (paid < total) {
-      showMessage(
-        context,
-        'المبلغ المدفوع أقل من الإجمالي',
-      );
+      showMessage(context, 'المبلغ المدفوع أقل من الإجمالي');
       return;
     }
 
-    final saleTotal = total;
-    final saleProfit = profit;
-    final saleItems = cart.fold<int>(
-      0,
-      (sum, item) => sum + item.quantity,
+    final sale = Sale(
+      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      date: DateTime.now(),
+      total: total,
+      paid: paid,
+      change: paid - total,
+      profit: profit,
+      items: cart.fold(
+        0,
+        (sum, item) => sum + item.quantity,
+      ),
     );
 
     for (final item in cart) {
@@ -832,49 +800,35 @@ class _CashierPageState extends State<CashierPage> {
       }
     }
 
-    final sale = Sale(
-      id: DateTime.now()
-          .millisecondsSinceEpoch
-          .toString(),
-      date: DateTime.now(),
-      total: saleTotal,
-      paid: paid,
-      change: paid - saleTotal,
-      profit: saleProfit,
-      items: saleItems,
-    );
-
     widget.onSaleComplete(sale);
-    widget.onStockChanged();
+    await widget.onStockChanged();
+
+    if (!mounted) return;
 
     setState(() {
       cart.clear();
     });
 
-    if (!mounted) return;
-
     await showDialog(
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: const Text(
-            'تم البيع بنجاح ✅',
-          ),
-          content: Text(
-            'الإجمالي: '
-            '${sale.total.toStringAsFixed(2)} ج\n'
-            'المدفوع: '
-            '${sale.paid.toStringAsFixed(2)} ج\n'
-            'الباقي: '
-            '${sale.change.toStringAsFixed(2)} ج\n'
-            'الربح: '
-            '${sale.profit.toStringAsFixed(2)} ج',
+          title: const Text('تم البيع بنجاح ✅'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('رقم الفاتورة: #${sale.id.substring(sale.id.length - 6)}'),
+              const SizedBox(height: 8),
+              Text('الإجمالي: ${money(sale.total)}'),
+              Text('المدفوع: ${money(sale.paid)}'),
+              Text('الباقي: ${money(sale.change)}'),
+              Text('الربح: ${money(sale.profit)}'),
+            ],
           ),
           actions: [
             FilledButton(
-              onPressed: () {
-                Navigator.pop(context);
-              },
+              onPressed: () => Navigator.pop(context),
               child: const Text('تم'),
             ),
           ],
@@ -888,7 +842,7 @@ class _CashierPageState extends State<CashierPage> {
     return Column(
       children: [
         Padding(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.fromLTRB(12, 12, 12, 5),
           child: TextField(
             onChanged: (value) {
               setState(() {
@@ -897,21 +851,17 @@ class _CashierPageState extends State<CashierPage> {
             },
             decoration: InputDecoration(
               hintText: 'ابحث عن منتج...',
-              prefixIcon: const Icon(
-                Icons.search,
-              ),
-              suffixIcon: search.isNotEmpty
-                  ? IconButton(
+              prefixIcon: const Icon(Icons.search),
+              suffixIcon: search.isEmpty
+                  ? null
+                  : IconButton(
                       onPressed: () {
                         setState(() {
                           search = '';
                         });
                       },
-                      icon: const Icon(
-                        Icons.clear,
-                      ),
-                    )
-                  : null,
+                      icon: const Icon(Icons.clear),
+                    ),
               border: const OutlineInputBorder(),
             ),
           ),
@@ -923,91 +873,58 @@ class _CashierPageState extends State<CashierPage> {
               ? const Center(
                   child: Text(
                     'لا توجد منتجات',
-                    style: TextStyle(
-                      fontSize: 20,
-                    ),
+                    style: TextStyle(fontSize: 20),
                   ),
                 )
               : GridView.builder(
-                  padding:
-                      const EdgeInsets.symmetric(
-                    horizontal: 12,
-                  ),
+                  padding: const EdgeInsets.all(12),
                   gridDelegate:
                       SliverGridDelegateWithFixedCrossAxisCount(
                     crossAxisCount:
-                        MediaQuery.of(context)
-                                    .size
-                                    .width >=
-                                800
+                        MediaQuery.of(context).size.width >= 800
                             ? 4
                             : 2,
                     crossAxisSpacing: 10,
                     mainAxisSpacing: 10,
-                    childAspectRatio: 1.15,
+                    childAspectRatio: 1.05,
                   ),
-                  itemCount:
-                      filteredProducts.length,
-                  itemBuilder:
-                      (context, index) {
-                    final product =
-                        filteredProducts[index];
+                  itemCount: filteredProducts.length,
+                  itemBuilder: (context, index) {
+                    final product = filteredProducts[index];
 
                     return Card(
                       child: InkWell(
-                        borderRadius:
-                            BorderRadius.circular(
-                          12,
-                        ),
-                        onTap: () {
-                          addToCart(product);
-                        },
+                        borderRadius: BorderRadius.circular(12),
+                        onTap: () => addToCart(product),
                         child: Padding(
-                          padding:
-                              const EdgeInsets.all(
-                            10,
-                          ),
+                          padding: const EdgeInsets.all(10),
                           child: Column(
                             mainAxisAlignment:
-                                MainAxisAlignment
-                                    .center,
+                                MainAxisAlignment.center,
                             children: [
                               const Icon(
-                                Icons
-                                    .shopping_bag_outlined,
+                                Icons.shopping_bag,
                                 size: 34,
                               ),
-                              const SizedBox(
-                                height: 7,
-                              ),
+                              const SizedBox(height: 6),
                               Text(
                                 product.name,
+                                textAlign: TextAlign.center,
                                 maxLines: 2,
-                                textAlign:
-                                    TextAlign.center,
-                                overflow:
-                                    TextOverflow
-                                        .ellipsis,
-                                style:
-                                    const TextStyle(
-                                  fontWeight:
-                                      FontWeight.bold,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
                                 ),
                               ),
-                              const SizedBox(
-                                height: 4,
-                              ),
-                              Text(
-                                '${product.sellPrice.toStringAsFixed(2)} ج',
-                              ),
+                              const SizedBox(height: 5),
+                              Text(money(product.sellPrice)),
                               Text(
                                 'المخزون: ${product.quantity}',
                                 style: TextStyle(
-                                  color:
-                                      product.quantity <=
-                                              5
-                                          ? Colors.red
-                                          : null,
+                                  color: product.quantity <=
+                                          product.lowStock
+                                      ? Colors.red
+                                      : null,
                                 ),
                               ),
                             ],
@@ -1028,74 +945,42 @@ class _CashierPageState extends State<CashierPage> {
               Expanded(
                 child: cart.isEmpty
                     ? const Center(
-                        child: Text(
-                          'السلة فارغة',
-                        ),
+                        child: Text('السلة فارغة'),
                       )
                     : ListView.builder(
                         itemCount: cart.length,
-                        itemBuilder:
-                            (context, index) {
-                          final item =
-                              cart[index];
+                        itemBuilder: (context, index) {
+                          final item = cart[index];
 
                           return ListTile(
-                            leading:
-                                const Icon(
-                              Icons
-                                  .shopping_cart,
+                            leading: CircleAvatar(
+                              child: Text('${item.quantity}'),
                             ),
-                            title: Text(
-                              item.product.name,
-                            ),
+                            title: Text(item.product.name),
                             subtitle: Text(
-                              '${item.product.sellPrice.toStringAsFixed(2)} ج × ${item.quantity}',
+                              '${money(item.product.sellPrice)} × ${item.quantity}',
                             ),
                             trailing: Row(
-                              mainAxisSize:
-                                  MainAxisSize.min,
+                              mainAxisSize: MainAxisSize.min,
                               children: [
                                 IconButton(
                                   onPressed: () =>
-                                      decreaseItem(
-                                    item,
-                                  ),
-                                  icon:
-                                      const Icon(
-                                    Icons
-                                        .remove_circle_outline,
+                                      decrease(item),
+                                  icon: const Icon(
+                                    Icons.remove_circle_outline,
                                   ),
                                 ),
                                 Text(
                                   '${item.quantity}',
-                                  style:
-                                      const TextStyle(
-                                    fontWeight:
-                                        FontWeight
-                                            .bold,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
                                   ),
                                 ),
                                 IconButton(
                                   onPressed: () =>
-                                      increaseItem(
-                                    item,
-                                  ),
-                                  icon:
-                                      const Icon(
-                                    Icons
-                                        .add_circle_outline,
-                                  ),
-                                ),
-                                const SizedBox(
-                                  width: 6,
-                                ),
-                                Text(
-                                  '${item.total.toStringAsFixed(2)} ج',
-                                  style:
-                                      const TextStyle(
-                                    fontWeight:
-                                        FontWeight
-                                            .bold,
+                                      increase(item),
+                                  icon: const Icon(
+                                    Icons.add_circle_outline,
                                   ),
                                 ),
                               ],
@@ -1106,34 +991,31 @@ class _CashierPageState extends State<CashierPage> {
               ),
 
               Padding(
-                padding:
-                    const EdgeInsets.fromLTRB(
-                  12,
-                  5,
-                  12,
-                  12,
-                ),
+                padding: const EdgeInsets.all(12),
                 child: Row(
                   children: [
                     Expanded(
-                      child: Text(
-                        'الإجمالي: '
-                        '${total.toStringAsFixed(2)} ج',
-                        style:
-                            const TextStyle(
-                          fontSize: 19,
-                          fontWeight:
-                              FontWeight.bold,
-                        ),
+                      child: Column(
+                        crossAxisAlignment:
+                            CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'الإجمالي: ${money(total)}',
+                            style: const TextStyle(
+                              fontSize: 19,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          Text(
+                            'الربح: ${money(profit)}',
+                          ),
+                        ],
                       ),
                     ),
                     FilledButton.icon(
                       onPressed: checkout,
-                      icon: const Icon(
-                        Icons.receipt_long,
-                      ),
-                      label:
-                          const Text('بيع'),
+                      icon: const Icon(Icons.receipt_long),
+                      label: const Text('بيع'),
                     ),
                   ],
                 ),
@@ -1165,52 +1047,42 @@ class ProductsPage extends StatefulWidget {
   });
 
   @override
-  State<ProductsPage> createState() =>
-      _ProductsPageState();
+  State<ProductsPage> createState() => _ProductsPageState();
 }
 
-class _ProductsPageState
-    extends State<ProductsPage> {
+class _ProductsPageState extends State<ProductsPage> {
   String search = '';
 
   List<Product> get filteredProducts {
-    final query = search.trim().toLowerCase();
+    final q = search.trim().toLowerCase();
 
-    if (query.isEmpty) {
-      return widget.products;
-    }
+    if (q.isEmpty) return widget.products;
 
     return widget.products
         .where(
-          (product) =>
-              product.name.toLowerCase().contains(
-                    query,
-                  ),
+          (p) => p.name.toLowerCase().contains(q),
         )
         .toList();
   }
 
-  void showProductDialog({
-    Product? product,
-  }) {
+  void showProductDialog({Product? product}) {
     final nameController =
-        TextEditingController(
-      text: product?.name ?? '',
-    );
+        TextEditingController(text: product?.name ?? '');
 
-    final buyController =
-        TextEditingController(
+    final buyController = TextEditingController(
       text: product?.buyPrice.toString() ?? '',
     );
 
-    final sellController =
-        TextEditingController(
+    final sellController = TextEditingController(
       text: product?.sellPrice.toString() ?? '',
     );
 
-    final quantityController =
-        TextEditingController(
+    final quantityController = TextEditingController(
       text: product?.quantity.toString() ?? '',
+    );
+
+    final lowStockController = TextEditingController(
+      text: product?.lowStock.toString() ?? '5',
     );
 
     showDialog(
@@ -1218,20 +1090,16 @@ class _ProductsPageState
       builder: (context) {
         return AlertDialog(
           title: Text(
-            product == null
-                ? 'إضافة منتج'
-                : 'تعديل المنتج',
+            product == null ? 'إضافة منتج' : 'تعديل المنتج',
           ),
           content: SingleChildScrollView(
             child: Column(
               children: [
                 TextField(
                   controller: nameController,
-                  decoration:
-                      const InputDecoration(
+                  decoration: const InputDecoration(
                     labelText: 'اسم المنتج',
-                    border:
-                        OutlineInputBorder(),
+                    border: OutlineInputBorder(),
                   ),
                 ),
 
@@ -1240,16 +1108,13 @@ class _ProductsPageState
                 TextField(
                   controller: buyController,
                   keyboardType:
-                      const TextInputType
-                          .numberWithOptions(
+                      const TextInputType.numberWithOptions(
                     decimal: true,
                   ),
-                  decoration:
-                      const InputDecoration(
+                  decoration: const InputDecoration(
                     labelText: 'سعر الشراء',
                     suffixText: 'ج',
-                    border:
-                        OutlineInputBorder(),
+                    border: OutlineInputBorder(),
                   ),
                 ),
 
@@ -1258,31 +1123,35 @@ class _ProductsPageState
                 TextField(
                   controller: sellController,
                   keyboardType:
-                      const TextInputType
-                          .numberWithOptions(
+                      const TextInputType.numberWithOptions(
                     decimal: true,
                   ),
-                  decoration:
-                      const InputDecoration(
+                  decoration: const InputDecoration(
                     labelText: 'سعر البيع',
                     suffixText: 'ج',
-                    border:
-                        OutlineInputBorder(),
+                    border: OutlineInputBorder(),
                   ),
                 ),
 
                 const SizedBox(height: 12),
 
                 TextField(
-                  controller:
-                      quantityController,
-                  keyboardType:
-                      TextInputType.number,
-                  decoration:
-                      const InputDecoration(
+                  controller: quantityController,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
                     labelText: 'الكمية',
-                    border:
-                        OutlineInputBorder(),
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+
+                const SizedBox(height: 12),
+
+                TextField(
+                  controller: lowStockController,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    labelText: 'حد التنبيه للمخزون',
+                    border: OutlineInputBorder(),
                   ),
                 ),
               ],
@@ -1290,42 +1159,41 @@ class _ProductsPageState
           ),
           actions: [
             TextButton(
-              onPressed: () {
-                Navigator.pop(context);
-              },
-              child:
-                  const Text('إلغاء'),
+              onPressed: () => Navigator.pop(context),
+              child: const Text('إلغاء'),
             ),
             FilledButton(
               onPressed: () {
-                final name =
-                    nameController.text.trim();
+                final name = nameController.text.trim();
 
                 final buy =
-                    double.tryParse(
-                          buyController.text,
-                        ) ??
-                        0;
+                    double.tryParse(buyController.text) ?? 0;
 
                 final sell =
-                    double.tryParse(
-                          sellController.text,
-                        ) ??
-                        0;
+                    double.tryParse(sellController.text) ?? 0;
 
                 final quantity =
-                    int.tryParse(
-                          quantityController.text,
-                        ) ??
-                        0;
+                    int.tryParse(quantityController.text) ?? 0;
+
+                final lowStock =
+                    int.tryParse(lowStockController.text) ?? 5;
 
                 if (name.isEmpty ||
                     buy < 0 ||
                     sell <= 0 ||
-                    quantity < 0) {
+                    quantity < 0 ||
+                    lowStock < 0) {
                   showMessage(
                     context,
                     'أدخل بيانات صحيحة',
+                  );
+                  return;
+                }
+
+                if (sell < buy) {
+                  showMessage(
+                    context,
+                    'سعر البيع أقل من سعر الشراء',
                   );
                   return;
                 }
@@ -1340,22 +1208,24 @@ class _ProductsPageState
                       buyPrice: buy,
                       sellPrice: sell,
                       quantity: quantity,
+                      lowStock: lowStock,
                     ),
                   );
                 } else {
                   product.name = name;
                   product.buyPrice = buy;
                   product.sellPrice = sell;
-                  product.quantity =
-                      quantity;
+                  product.quantity = quantity;
+                  product.lowStock = lowStock;
 
                   widget.onUpdate(product);
                 }
 
                 Navigator.pop(context);
+
+                setState(() {});
               },
-              child:
-                  const Text('حفظ'),
+              child: const Text('حفظ'),
             ),
           ],
         );
@@ -1363,33 +1233,27 @@ class _ProductsPageState
     );
   }
 
-  void confirmDelete(
-    Product product,
-  ) {
+  void confirmDelete(Product product) {
     showDialog(
       context: context,
       builder: (context) {
         return AlertDialog(
-          title:
-              const Text('حذف المنتج'),
+          title: const Text('حذف المنتج'),
           content: Text(
             'هل تريد حذف "${product.name}"؟',
           ),
           actions: [
             TextButton(
-              onPressed: () {
-                Navigator.pop(context);
-              },
-              child:
-                  const Text('إلغاء'),
+              onPressed: () => Navigator.pop(context),
+              child: const Text('إلغاء'),
             ),
             FilledButton(
               onPressed: () {
                 widget.onDelete(product);
                 Navigator.pop(context);
+                setState(() {});
               },
-              child:
-                  const Text('حذف'),
+              child: const Text('حذف'),
             ),
           ],
         );
@@ -1399,144 +1263,111 @@ class _ProductsPageState
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      floatingActionButton:
-          FloatingActionButton.extended(
-        onPressed: () {
-          showProductDialog();
-        },
-        icon: const Icon(Icons.add),
-        label:
-            const Text('إضافة منتج'),
-      ),
-      body: Column(
-        children: [
-          Padding(
-            padding:
-                const EdgeInsets.all(12),
-            child: TextField(
-              onChanged: (value) {
-                setState(() {
-                  search = value;
-                });
-              },
-              decoration:
-                  InputDecoration(
-                hintText:
-                    'ابحث عن منتج...',
-                prefixIcon:
-                    const Icon(
-                  Icons.search,
+    return Stack(
+      children: [
+        Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(12),
+              child: TextField(
+                onChanged: (value) {
+                  setState(() {
+                    search = value;
+                  });
+                },
+                decoration: const InputDecoration(
+                  hintText: 'البحث عن منتج...',
+                  prefixIcon: Icon(Icons.search),
+                  border: OutlineInputBorder(),
                 ),
-                border:
-                    const OutlineInputBorder(),
               ),
             ),
-          ),
 
-          Expanded(
-            child:
-                filteredProducts.isEmpty
-                    ? const Center(
-                        child: Text(
-                          'لا توجد منتجات',
-                          style:
-                              TextStyle(
-                            fontSize: 20,
-                          ),
-                        ),
-                      )
-                    : ListView.builder(
-                        padding:
-                            const EdgeInsets
-                                .symmetric(
-                          horizontal: 12,
-                        ),
-                        itemCount:
-                            filteredProducts
-                                .length,
-                        itemBuilder:
-                            (context, index) {
-                          final product =
-                              filteredProducts[
-                                  index];
+            Expanded(
+              child: filteredProducts.isEmpty
+                  ? const Center(
+                      child: Text(
+                        'لا توجد منتجات',
+                        style: TextStyle(fontSize: 20),
+                      ),
+                    )
+                  : ListView.builder(
+                      padding: const EdgeInsets.fromLTRB(
+                        12,
+                        0,
+                        12,
+                        90,
+                      ),
+                      itemCount: filteredProducts.length,
+                      itemBuilder: (context, index) {
+                        final product =
+                            filteredProducts[index];
 
-                          return Card(
-                            child:
-                                ListTile(
-                              leading:
-                                  const CircleAvatar(
-                                child:
-                                    Icon(
-                                  Icons
-                                      .inventory_2,
-                                ),
-                              ),
-                              title: Text(
-                                product.name,
-                                style:
-                                    const TextStyle(
-                                  fontWeight:
-                                      FontWeight
-                                          .bold,
-                                ),
-                              ),
-                              subtitle:
-                                  Text(
-                                'شراء: ${product.buyPrice.toStringAsFixed(2)} ج\n'
-                                'بيع: ${product.sellPrice.toStringAsFixed(2)} ج\n'
-                                'المخزون: ${product.quantity} • الربح: ${product.profit.toStringAsFixed(2)} ج',
-                              ),
-                              isThreeLine:
-                                  true,
-                              trailing:
-                                  PopupMenuButton<
-                                      String>(
-                                onSelected:
-                                    (value) {
-                                  if (value ==
-                                      'edit') {
-                                    showProductDialog(
-                                      product:
-                                          product,
-                                    );
-                                  }
+                        final low =
+                            product.quantity <= product.lowStock;
 
-                                  if (value ==
-                                      'delete') {
-                                    confirmDelete(
-                                      product,
-                                    );
-                                  }
-                                },
-                                itemBuilder:
-                                    (context) =>
-                                        const [
-                                  PopupMenuItem(
-                                    value:
-                                        'edit',
-                                    child:
-                                        Text(
-                                      'تعديل',
-                                    ),
-                                  ),
-                                  PopupMenuItem(
-                                    value:
-                                        'delete',
-                                    child:
-                                        Text(
-                                      'حذف',
-                                    ),
-                                  ),
-                                ],
+                        return Card(
+                          child: ListTile(
+                            leading: CircleAvatar(
+                              child: Icon(
+                                low
+                                    ? Icons.warning
+                                    : Icons.inventory_2,
                               ),
                             ),
-                          );
-                        },
-                      ),
+                            title: Text(
+                              product.name,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            subtitle: Text(
+                              'شراء: ${money(product.buyPrice)}\n'
+                              'بيع: ${money(product.sellPrice)}\n'
+                              'المخزون: ${product.quantity} '
+                              '${low ? '⚠️' : ''}',
+                            ),
+                            isThreeLine: true,
+                            trailing:
+                                PopupMenuButton<String>(
+                              onSelected: (value) {
+                                if (value == 'edit') {
+                                  showProductDialog(
+                                    product: product,
+                                  );
+                                } else if (value == 'delete') {
+                                  confirmDelete(product);
+                                }
+                              },
+                              itemBuilder: (context) => const [
+                                PopupMenuItem(
+                                  value: 'edit',
+                                  child: Text('تعديل'),
+                                ),
+                                PopupMenuItem(
+                                  value: 'delete',
+                                  child: Text('حذف'),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+            ),
+          ],
+        ),
+
+        Positioned(
+          left: 16,
+          bottom: 16,
+          child: FloatingActionButton.extended(
+            onPressed: () => showProductDialog(),
+            icon: const Icon(Icons.add),
+            label: const Text('إضافة منتج'),
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
@@ -1545,8 +1376,7 @@ class _ProductsPageState
 // REPORTS
 // ============================================================
 
-class ReportsPage
-    extends StatefulWidget {
+class ReportsPage extends StatelessWidget {
   final List<Sale> sales;
 
   const ReportsPage({
@@ -1555,199 +1385,118 @@ class ReportsPage
   });
 
   @override
-  State<ReportsPage> createState() =>
-      _ReportsPageState();
-}
-
-class _ReportsPageState
-    extends State<ReportsPage> {
-  bool todayOnly = false;
-
-  List<Sale> get filteredSales {
-    if (!todayOnly) {
-      return widget.sales;
-    }
-
-    final now = DateTime.now();
-
-    return widget.sales.where(
-      (sale) =>
-          sale.date.year == now.year &&
-          sale.date.month == now.month &&
-          sale.date.day == now.day,
-    ).toList();
-  }
-
-  @override
   Widget build(BuildContext context) {
-    final total = filteredSales.fold(
-      0.0,
-      (sum, sale) => sum + sale.total,
-    );
+    final totalSales =
+        sales.fold(0.0, (sum, sale) => sum + sale.total);
 
-    final profit = filteredSales.fold(
-      0.0,
-      (sum, sale) => sum + sale.profit,
-    );
+    final totalProfit =
+        sales.fold(0.0, (sum, sale) => sum + sale.profit);
+
+    final totalItems =
+        sales.fold(0, (sum, sale) => sum + sale.items);
 
     return Column(
       children: [
         Padding(
-          padding:
-              const EdgeInsets.all(12),
-          child: Row(
+          padding: const EdgeInsets.all(12),
+          child: GridView.count(
+            crossAxisCount:
+                MediaQuery.of(context).size.width >= 700
+                    ? 3
+                    : 1,
+            shrinkWrap: true,
+            physics:
+                const NeverScrollableScrollPhysics(),
+            mainAxisSpacing: 10,
+            crossAxisSpacing: 10,
+            childAspectRatio: 3,
             children: [
-              Expanded(
-                child: Card(
-                  child: ListTile(
-                    leading:
-                        const Icon(
-                      Icons.payments,
-                    ),
-                    title:
-                        const Text(
-                      'المبيعات',
-                    ),
-                    subtitle: Text(
-                      '${total.toStringAsFixed(2)} ج',
-                      style:
-                          const TextStyle(
-                        fontSize: 20,
-                        fontWeight:
-                            FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                ),
+              StatCard(
+                title: 'إجمالي المبيعات',
+                value: money(totalSales),
+                icon: Icons.payments,
               ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Card(
-                  child: ListTile(
-                    leading:
-                        const Icon(
-                      Icons.trending_up,
-                    ),
-                    title:
-                        const Text(
-                      'الأرباح',
-                    ),
-                    subtitle: Text(
-                      '${profit.toStringAsFixed(2)} ج',
-                      style:
-                          const TextStyle(
-                        fontSize: 20,
-                        fontWeight:
-                            FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                ),
+              StatCard(
+                title: 'إجمالي الأرباح',
+                value: money(totalProfit),
+                icon: Icons.trending_up,
+              ),
+              StatCard(
+                title: 'إجمالي القطع',
+                value: '$totalItems',
+                icon: Icons.shopping_cart,
               ),
             ],
           ),
         ),
 
-        Padding(
-          padding:
-              const EdgeInsets.symmetric(
-            horizontal: 12,
-          ),
-          child: SegmentedButton<bool>(
-            segments: const [
-              ButtonSegment<bool>(
-                value: false,
-                label:
-                    Text('كل المبيعات'),
-                icon: Icon(
-                  Icons.list,
-                ),
-              ),
-              ButtonSegment<bool>(
-                value: true,
-                label:
-                    Text('اليوم'),
-                icon: Icon(
-                  Icons.today,
-                ),
-              ),
-            ],
-            selected: {todayOnly},
-            onSelectionChanged:
-                (value) {
-              setState(() {
-                todayOnly = value.first;
-              });
-            },
-          ),
-        ),
-
-        const SizedBox(height: 8),
+        const Divider(),
 
         Expanded(
-          child: filteredSales.isEmpty
+          child: sales.isEmpty
               ? const Center(
                   child: Text(
-                    'لا توجد مبيعات',
-                    style:
-                        TextStyle(
-                      fontSize: 20,
-                    ),
+                    'لا توجد فواتير حتى الآن',
+                    style: TextStyle(fontSize: 20),
                   ),
                 )
               : ListView.builder(
-                  itemCount:
-                      filteredSales.length,
-                  itemBuilder:
-                      (context, index) {
+                  padding: const EdgeInsets.all(12),
+                  itemCount: sales.length,
+                  itemBuilder: (context, index) {
                     final sale =
-                        filteredSales[
-                            filteredSales
-                                    .length -
-                                1 -
-                                index];
+                        sales[sales.length - 1 - index];
 
-                    final shortId =
+                    final invoiceId =
                         sale.id.length > 6
                             ? sale.id.substring(
-                                sale.id.length -
-                                    6,
+                                sale.id.length - 6,
                               )
                             : sale.id;
 
                     return Card(
-                      margin:
-                          const EdgeInsets
-                              .symmetric(
-                        horizontal: 12,
-                        vertical: 5,
-                      ),
-                      child: ListTile(
-                        leading:
-                            const CircleAvatar(
-                          child: Icon(
-                            Icons.receipt,
-                          ),
+                      child: ExpansionTile(
+                        leading: const CircleAvatar(
+                          child: Icon(Icons.receipt_long),
                         ),
                         title: Text(
-                          'فاتورة #$shortId',
-                        ),
-                        subtitle:
-                            Text(
-                          '${sale.date.day}/${sale.date.month}/${sale.date.year} • '
-                          '${sale.items} قطعة • '
-                          'ربح ${sale.profit.toStringAsFixed(2)} ج',
-                        ),
-                        trailing:
-                            Text(
-                          '${sale.total.toStringAsFixed(2)} ج',
-                          style:
-                              const TextStyle(
-                            fontWeight:
-                                FontWeight
-                                    .bold,
+                          'فاتورة #$invoiceId',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
                           ),
                         ),
+                        subtitle: Text(
+                          '${sale.date.day}/${sale.date.month}/${sale.date.year}'
+                          ' • ${sale.items} قطعة',
+                        ),
+                        trailing: Text(
+                          money(sale.total),
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        children: [
+                          ListTile(
+                            title: const Text('الإجمالي'),
+                            trailing:
+                                Text(money(sale.total)),
+                          ),
+                          ListTile(
+                            title: const Text('المدفوع'),
+                            trailing:
+                                Text(money(sale.paid)),
+                          ),
+                          ListTile(
+                            title: const Text('الباقي'),
+                            trailing:
+                                Text(money(sale.change)),
+                          ),
+                          ListTile(
+                            title: const Text('الربح'),
+                            trailing:
+                                Text(money(sale.profit)),
+                          ),
+                        ],
                       ),
                     );
                   },
@@ -1762,11 +1511,9 @@ class _ReportsPageState
 // SETTINGS
 // ============================================================
 
-class SettingsPage
-    extends StatelessWidget {
+class SettingsPage extends StatelessWidget {
   final bool darkMode;
-  final ValueChanged<bool>
-      onThemeChanged;
+  final ValueChanged<bool> onThemeChanged;
 
   const SettingsPage({
     super.key,
@@ -1774,18 +1521,14 @@ class SettingsPage
     required this.onThemeChanged,
   });
 
-  Future<void> openWhatsApp(
-    BuildContext context,
-  ) async {
-    final uri = Uri.parse(
-      'https://wa.me/201030415839',
-    );
+  Future<void> openWhatsApp(BuildContext context) async {
+    final uri =
+        Uri.parse('https://wa.me/201030415839');
 
     if (await canLaunchUrl(uri)) {
       await launchUrl(
         uri,
-        mode: LaunchMode
-            .externalApplication,
+        mode: LaunchMode.externalApplication,
       );
     } else {
       showMessage(
@@ -1795,19 +1538,15 @@ class SettingsPage
     }
   }
 
-  Future<void> makeCall(
-    BuildContext context,
-  ) async {
-    final uri = Uri.parse(
-      'tel:01012610087',
-    );
+  Future<void> makeCall(BuildContext context) async {
+    final uri = Uri.parse('tel:01012610087');
 
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri);
     } else {
       showMessage(
         context,
-        'تعذر فتح الاتصال',
+        'تعذر فتح تطبيق الاتصال',
       );
     }
   }
@@ -1815,40 +1554,30 @@ class SettingsPage
   @override
   Widget build(BuildContext context) {
     return ListView(
-      padding:
-          const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(16),
       children: [
         Card(
-          child:
-              SwitchListTile(
+          child: SwitchListTile(
             secondary: Icon(
               darkMode
                   ? Icons.dark_mode
                   : Icons.light_mode,
             ),
-            title:
-                const Text(
-              'الوضع الليلي',
-            ),
+            title: const Text('الوضع الليلي'),
             subtitle:
-                const Text(
-              'تغيير مظهر البرنامج',
-            ),
+                const Text('تغيير مظهر البرنامج'),
             value: darkMode,
-            onChanged:
-                onThemeChanged,
+            onChanged: onThemeChanged,
           ),
         ),
 
-        const SizedBox(height: 18),
+        const SizedBox(height: 15),
 
         const Text(
           'الدعم والشكاوى',
-          style:
-              TextStyle(
+          style: TextStyle(
             fontSize: 22,
-            fontWeight:
-                FontWeight.bold,
+            fontWeight: FontWeight.bold,
           ),
         ),
 
@@ -1856,10 +1585,7 @@ class SettingsPage
 
         Card(
           child: Padding(
-            padding:
-                const EdgeInsets.all(
-              16,
-            ),
+            padding: const EdgeInsets.all(16),
             child: Column(
               children: [
                 const Icon(
@@ -1867,12 +1593,85 @@ class SettingsPage
                   size: 55,
                 ),
 
-                const SizedBox(
-                  height: 10,
-                ),
+                const SizedBox(height: 10),
 
                 const Text(
                   'للدعم والاستفسارات والشكاوى',
-                  textAlign:
-                      TextAlign.center,
-                  style:
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+
+                const SizedBox(height: 15),
+
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: () =>
+                        openWhatsApp(context),
+                    icon: const Icon(Icons.chat),
+                    label:
+                        const Text('واتساب الشكاوى'),
+                  ),
+                ),
+
+                const SizedBox(height: 10),
+
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: () =>
+                        makeCall(context),
+                    icon: const Icon(Icons.phone),
+                    label:
+                        const Text('اتصال مباشر'),
+                  ),
+                ),
+
+                const SizedBox(height: 12),
+
+                const Text(
+                  'واتساب: 01030415839\n'
+                  'المكالمات: 01012610087',
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            ),
+          ),
+        ),
+
+        const SizedBox(height: 15),
+
+        const Card(
+          child: ListTile(
+            leading: Icon(Icons.info_outline),
+            title: Text('CASHIER PRO'),
+            subtitle: Text('الإصدار V5.0'),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ============================================================
+// HELPERS
+// ============================================================
+
+String money(double value) {
+  return '${value.toStringAsFixed(2)} ج';
+}
+
+void showMessage(
+  BuildContext context,
+  String message,
+) {
+  ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(
+      content: Text(message),
+      behavior: SnackBarBehavior.floating,
+    ),
+  );
+}

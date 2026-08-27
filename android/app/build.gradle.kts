@@ -5,9 +5,13 @@ plugins {
 }
 
 android {
-    namespace = "com.example.cashier_pro"
-    compileSdk = flutter.compileSdkVersion
-    ndkVersion = flutter.ndkVersion
+    namespace = "com.cashierpro.app"
+
+    defaultConfig {
+        applicationId = "com.cashierpro.app"
+        // باقي الإعدادات الموجودة عندك
+    }
+}
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17

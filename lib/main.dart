@@ -1012,97 +1012,134 @@ class _CashierHomeState extends State<CashierHome> {
   }
 
   Widget buildSettings() {
-    return ListView(
-      padding: const EdgeInsets.all(20),
-      children: [
-        const Text(
-          'الإعدادات',
-          style: TextStyle(
-            fontSize: 28,
-            fontWeight: FontWeight.bold,
-          ),
+  return ListView(
+    padding: const EdgeInsets.all(20),
+    children: [
+      const Text(
+        'الإعدادات',
+        style: TextStyle(
+          fontSize: 28,
+          fontWeight: FontWeight.bold,
         ),
-        const SizedBox(height: 20),
-        Card(
-          child: ListTile(
-            leading: const Icon(Icons.store),
-            title: const Text('اسم المتجر'),
-            subtitle: const Text('Cashier Pro'),
-            trailing: const Icon(Icons.edit),
-          ),
-        ),
-        Card(
-          child: ListTile(
-            leading: const Icon(Icons.inventory_2),
-            title: const Text('عدد المنتجات'),
-            trailing: Text('${products.length}'),
-          ),
-        ),
-        Card(
-          child: ListTile(
-            leading: const Icon(Icons.receipt_long),
-            title: const Text('عدد الفواتير'),
-            trailing: Text('${sales.length}'),
-          ),
-        ),
-        Card(
-          child: ListTile(
-            leading: const Icon(Icons.info_outline),
-            title: const Text('الإصدار'),
-            subtitle: const Text('Cashier Pro V2'),
-          ),
-        ),
-        const SizedBox(height: 20),
-        const Text(
-          'ملاحظة: البيانات الحالية مؤقتة، وسيتم إضافة التخزين الدائم في V3.',
-          style: TextStyle(color: Colors.white70),
-        ),
-      ],
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    Widget body;
-
-    switch (currentIndex) {
-      case 1:
-        body = buildSales();
-        break;
-      case 2:
-        body = buildSettings();
-        break;
-      default:
-        body = buildCashier();
-    }
-
-    return Scaffold(
-      body: SafeArea(child: body),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: currentIndex,
-        onDestinationSelected: (index) {
-          setState(() {
-            currentIndex = index;
-          });
-        },
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.point_of_sale_outlined),
-            selectedIcon: Icon(Icons.point_of_sale),
-            label: 'الكاشير',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.receipt_long_outlined),
-            selectedIcon: Icon(Icons.receipt_long),
-            label: 'المبيعات',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.settings_outlined),
-            selectedIcon: Icon(Icons.settings),
-            label: 'الإعدادات',
-          ),
-        ],
       ),
-    );
-  }
+
+      const SizedBox(height: 20),
+
+      Card(
+        child: ListTile(
+          leading: const Icon(Icons.store),
+          title: const Text('اسم المتجر'),
+          subtitle: const Text('Cashier Pro'),
+          trailing: const Icon(Icons.edit),
+        ),
+      ),
+
+      Card(
+        child: ListTile(
+          leading: const Icon(Icons.inventory_2),
+          title: const Text('عدد المنتجات'),
+          trailing: Text('${products.length}'),
+        ),
+      ),
+
+      Card(
+        child: ListTile(
+          leading: const Icon(Icons.receipt_long),
+          title: const Text('عدد الفواتير'),
+          trailing: Text('${sales.length}'),
+        ),
+      ),
+
+      const SizedBox(height: 20),
+
+      const Text(
+        'الدعم والشكاوى',
+        style: TextStyle(
+          fontSize: 22,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+
+      const SizedBox(height: 10),
+
+      Card(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            children: [
+              const Icon(
+                Icons.support_agent,
+                size: 45,
+              ),
+
+              const SizedBox(height: 10),
+
+              const Text(
+                'للدعم والاستفسارات والشكاوى',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+
+              const SizedBox(height: 15),
+
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: () {
+                    showMessage(
+                      'واتساب الشكاوى: 01030415839',
+                    );
+                  },
+                  icon: const Icon(Icons.chat),
+                  label: const Text(
+                    'واتساب الشكاوى 01030415839',
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 10),
+
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: () {
+                    showMessage(
+                      'رقم المكالمات: 01012610087',
+                    );
+                  },
+                  icon: const Icon(Icons.phone),
+                  label: const Text(
+                    'الاتصال 01012610087',
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+
+      const SizedBox(height: 20),
+
+      Card(
+        child: ListTile(
+          leading: const Icon(Icons.info_outline),
+          title: const Text('الإصدار'),
+          subtitle: const Text('Cashier Pro V2'),
+        ),
+      ),
+
+      const SizedBox(height: 15),
+
+      const Text(
+        'Cashier Pro • نظام كاشير احترافي',
+        textAlign: TextAlign.center,
+        style: TextStyle(
+          color: Colors.white60,
+        ),
+      ),
+    ],
+  );
 }

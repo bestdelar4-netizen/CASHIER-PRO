@@ -5,6 +5,7 @@ plugins {
 
 android {
     namespace = "com.cashierpro.app"
+    compileSdk = 36
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -15,7 +16,7 @@ android {
         applicationId = "com.cashierpro.app"
 
         minSdk = flutter.minSdkVersion
-        targetSdk = flutter.targetSdkVersion
+        targetSdk = 36
 
         versionCode = flutter.versionCode
         versionName = flutter.versionName
@@ -23,8 +24,6 @@ android {
 
     buildTypes {
         release {
-            // مؤقتًا نستخدم توقيع debug
-            // إلى أن نجهز Release Signing
             signingConfig = signingConfigs.getByName("debug")
         }
     }

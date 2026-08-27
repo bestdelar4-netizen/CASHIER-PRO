@@ -2,7 +2,7 @@ name: cashier_pro
 description: "CASHIER PRO - نظام كاشير وإدارة مبيعات"
 publish_to: 'none'
 
-version: 3.0.0+3
+version: 4.0.0+4
 
 environment:
   sdk: '>=3.12.2 <4.0.0'
@@ -13,10 +13,8 @@ dependencies:
 
   cupertino_icons: ^1.0.8
 
-  # حفظ البيانات محليًا
   shared_preferences: ^2.5.3
 
-  # فتح واتساب والاتصال المباشر
   url_launcher: ^6.3.2
 
 dev_dependencies:

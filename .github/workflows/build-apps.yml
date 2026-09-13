@@ -1,0 +1,36 @@
+name: Build CASHIER PRO
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Get repository files
+        uses: actions/checkout@v4
+      - name: Unpack updated app
+        run: Expand-Archive -Path CASHIER-PRO-ready-for-github-build.zip -DestinationPath app
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - name: Get packages
+        working-directory: app
+        run: flutter pub get
+      - name: Build Android APK
+        working-directory: app
+        run: flutter build apk --release
+      - name: Build Windows app
+        working-directory: app
+        run: flutter build windows --release
+      - name: Save Android APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: CASHIER-PRO-Android-APK
+          path: app/build/app/outputs/flutter-apk/app-release.apk
+      - name: Save Windows app
+        uses: actions/upload-artifact@v4
+        with:
+          name: CASHIER-PRO-Windows
+          path: app/build/windows/x64/runner/Release/

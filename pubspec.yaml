@@ -31,3 +31,10 @@ flutter:
 
   assets:
     - assets/images/logo.jpg
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/images/logo.jpg"
+  adaptive_icon_background: "#111111"
+  adaptive_icon_foreground: "assets/images/logo.jpg"

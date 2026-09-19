@@ -1,0 +1,45 @@
+name: Build Koshary Om Saif Windows
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+      - name: تحميل المشروع
+        uses: actions/checkout@v4
+
+      - name: إعداد Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: تفعيل Windows Desktop
+        run: flutter config --enable-windows-desktop
+
+      - name: تحميل المكتبات
+        run: flutter pub get
+
+      - name: فحص المشروع
+        run: flutter analyze || true
+
+      - name: بناء نسخة Windows
+        run: flutter build windows --release
+
+      - name: ضغط البرنامج
+        shell: powershell
+        run: |
+          Compress-Archive `
+            -Path "build\windows\x64\runner\Release\*" `
+            -DestinationPath "koshary-om-saif-windows.zip"
+
+      - name: رفع نسخة Windows
+        uses: actions/upload-artifact@v4
+        with:
+          name: koshary-om-saif-windows
+          path: koshary-om-saif-windows.zip

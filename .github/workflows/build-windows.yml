@@ -1,4 +1,4 @@
-name: Build Koshary Om Saif Windows
+name: Build Koshary Om Saif Windows Installer
 
 on:
   workflow_dispatch:
@@ -19,7 +19,7 @@ jobs:
         with:
           channel: stable
 
-      - name: تفعيل Windows
+      - name: تفعيل Windows Desktop
         run: flutter config --enable-windows-desktop
 
       - name: تحميل المكتبات
@@ -37,15 +37,47 @@ jobs:
       - name: بناء نسخة Windows
         run: flutter build windows --release
 
-      - name: ضغط البرنامج
+      - name: إنشاء ملف Inno Setup
         shell: pwsh
         run: |
-          Compress-Archive `
-            -Path "build\windows\x64\runner\Release\*" `
-            -DestinationPath "koshary-om-saif-windows.zip"
+          @"
+          [Setup]
+          AppName=كشري أم سيف
+          AppVersion=4.0.0
+          DefaultDirName={autopf}\Koshary Om Saif
+          DefaultGroupName=كشري أم سيف
+          OutputDir=installer
+          OutputBaseFilename=Koshary-Om-Saif-Setup
+          Compression=lzma
+          SolidCompression=yes
+          ArchitecturesInstallIn64BitMode=x64compatible
+          SetupIconFile=windows\runner\resources\app_icon.ico
+          UninstallDisplayIcon={app}\cashier_pro.exe
 
-      - name: رفع نسخة Windows
+          [Files]
+          Source: "build\windows\x64\runner\Release\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+
+          [Icons]
+          Name: "{autodesktop}\كشري أم سيف"; Filename: "{app}\cashier_pro.exe"; WorkingDir: "{app}"
+          Name: "{group}\كشري أم سيف"; Filename: "{app}\cashier_pro.exe"; WorkingDir: "{app}"
+
+          [Run]
+          Filename: "{app}\cashier_pro.exe"; Description: "تشغيل كشري أم سيف"; Flags: nowait postinstall skipifsilent
+          "@ | Set-Content -Encoding UTF8 installer.iss
+
+      - name: تثبيت Inno Setup
+        shell: pwsh
+        run: |
+          choco install innosetup -y
+
+      - name: بناء المثبت
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path installer
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer.iss
+
+      - name: رفع المثبت
         uses: actions/upload-artifact@v4
         with:
-          name: koshary-om-saif-windows
-          path: koshary-om-saif-windows.zip
+          name: koshary-om-saif-installer
+          path: installer/Koshary-Om-Saif-Setup.exe

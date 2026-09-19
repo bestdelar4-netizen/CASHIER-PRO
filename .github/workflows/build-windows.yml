@@ -19,11 +19,17 @@ jobs:
         with:
           channel: stable
 
-      - name: تفعيل Windows Desktop
+      - name: تفعيل Windows
         run: flutter config --enable-windows-desktop
 
       - name: تحميل المكتبات
         run: flutter pub get
+
+      - name: تحويل اللوجو إلى ICO
+        shell: pwsh
+        run: |
+          python -m pip install pillow
+          python -c "from PIL import Image; im=Image.open('assets/images/logo.jpg').convert('RGBA'); im.save('windows/runner/resources/app_icon.ico', sizes=[(16,16),(32,32),(48,48),(64,64),(128,128),(256,256)])"
 
       - name: فحص المشروع
         run: flutter analyze || true
@@ -32,7 +38,7 @@ jobs:
         run: flutter build windows --release
 
       - name: ضغط البرنامج
-        shell: powershell
+        shell: pwsh
         run: |
           Compress-Archive `
             -Path "build\windows\x64\runner\Release\*" `

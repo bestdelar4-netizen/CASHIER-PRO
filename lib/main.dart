@@ -73,13 +73,10 @@ class _HomePageState extends State<HomePage> {
         backgroundColor: Colors.black,
         foregroundColor: Colors.amber,
       ),
-
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
-
-            // اللوجو
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
@@ -97,6 +94,18 @@ class _HomePageState extends State<HomePage> {
                   height: 190,
                   width: double.infinity,
                   fit: BoxFit.contain,
+                  errorBuilder: (context, error, stackTrace) {
+                    return const SizedBox(
+                      height: 190,
+                      child: Center(
+                        child: Icon(
+                          Icons.restaurant,
+                          color: Colors.amber,
+                          size: 90,
+                        ),
+                      ),
+                    );
+                  },
                 ),
               ),
             ),
@@ -114,7 +123,6 @@ class _HomePageState extends State<HomePage> {
 
             const SizedBox(height: 20),
 
-            // الكشري الصغير
             _productCard(
               title: 'كشري صغير',
               price: 15,
@@ -125,7 +133,6 @@ class _HomePageState extends State<HomePage> {
 
             const SizedBox(height: 12),
 
-            // الكشري الكبير
             _productCard(
               title: 'كشري كبير',
               price: 20,
@@ -136,7 +143,6 @@ class _HomePageState extends State<HomePage> {
 
             const SizedBox(height: 25),
 
-            // ملخص المبيعات
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(20),
@@ -176,4 +182,161 @@ class _HomePageState extends State<HomePage> {
 
                   _summaryRow(
                     'إجمالي الأطباق',
-                    '${smallCount + largeCount
+                    '${smallCount + largeCount} طبق',
+                  ),
+
+                  const SizedBox(height: 10),
+
+                  Text(
+                    'الإجمالي: ${total.toStringAsFixed(0)} جنيه',
+                    style: const TextStyle(
+                      color: Colors.greenAccent,
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 20),
+
+            SizedBox(
+              width: double.infinity,
+              height: 55,
+              child: ElevatedButton.icon(
+                onPressed: resetSales,
+                icon: const Icon(Icons.delete_outline),
+                label: const Text(
+                  'تصفير المبيعات',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.red.shade700,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(15),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _productCard({
+    required String title,
+    required int price,
+    required int count,
+    required IconData icon,
+    required VoidCallback onPressed,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1E1E1E),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: Colors.amber,
+        ),
+      ),
+      child: Row(
+        children: [
+          CircleAvatar(
+            radius: 30,
+            backgroundColor: Colors.amber,
+            child: Icon(
+              icon,
+              color: Colors.black,
+              size: 32,
+            ),
+          ),
+
+          const SizedBox(width: 15),
+
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+
+                const SizedBox(height: 5),
+
+                Text(
+                  '$price جنيه',
+                  style: const TextStyle(
+                    color: Colors.amber,
+                    fontSize: 17,
+                  ),
+                ),
+
+                Text(
+                  'الكمية: $count',
+                  style: const TextStyle(
+                    color: Colors.grey,
+                    fontSize: 15,
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          ElevatedButton(
+            onPressed: onPressed,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.amber,
+              foregroundColor: Colors.black,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+            child: const Text(
+              'إضافة',
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _summaryRow(String title, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 7),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(
+            title,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 17,
+            ),
+          ),
+          Text(
+            value,
+            style: const TextStyle(
+              color: Colors.amber,
+              fontSize: 17,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
